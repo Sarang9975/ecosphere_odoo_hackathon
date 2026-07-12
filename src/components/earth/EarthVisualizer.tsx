@@ -80,7 +80,7 @@ interface PlanetProps {
 function Planet({ esg, carbon, csr }: PlanetProps) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const geo = useMemo(() => {
-    const g = new THREE.IcosahedronGeometry(2.5, 64);
+    const g = new THREE.IcosahedronGeometry(2.5, 5);
     const positions = g.attributes.position as THREE.BufferAttribute;
     const count = positions.count;
     const colors = new Float32Array(count * 3);
@@ -251,7 +251,6 @@ function Trees({ esg, count = 600 }: { esg: number; count?: number }) {
 
       if (isLand && notPolar) {
         // Place on terrain surface
-        const geo = new THREE.IcosahedronGeometry(2.5, 2);
         const landH = (n - 0.28) / (0.72 - 0.28);
         const disp = landH * 0.38;
         const surfaceR = 2.5 + disp + 0.03;
