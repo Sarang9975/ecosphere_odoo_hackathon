@@ -2,46 +2,9 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
-import { Trophy, Zap, Star, Gift, Crown, Swords, Medal, Plus } from "lucide-react";
+import { Trophy, Zap, Star, Gift, Crown, Swords, Medal, Plus, X } from "lucide-react";
 import ReactConfetti from "react-confetti";
-
-const challenges = [
-  { id: 1, title: "Zero-Waste Week", category: "Environment", xp: 500, difficulty: "HARD", deadline: "Jul 14", status: "ACTIVE", participants: 45 },
-  { id: 2, title: "Cycle to Work Month", category: "Transport", xp: 300, difficulty: "MEDIUM", deadline: "Jul 31", status: "ACTIVE", participants: 28 },
-  { id: 3, title: "Plant-Based Lunch Week", category: "Food", xp: 200, difficulty: "EASY", deadline: "Jul 12", status: "UNDER_REVIEW", participants: 67 },
-  { id: 4, title: "Digital Carbon Detox", category: "Technology", xp: 150, difficulty: "EASY", deadline: "Aug 1", status: "DRAFT", participants: 0 },
-  { id: 5, title: "Office Energy Blitz", category: "Energy", xp: 800, difficulty: "EPIC", deadline: "Aug 31", status: "ACTIVE", participants: 12 },
-];
-
-const badges = [
-  { id: 1, name: "Carbon Champion", icon: "🌱", color: "#10b981", rule: "Earn 1000 XP", unlocked: true, holders: 12 },
-  { id: 2, name: "Eco Warrior", icon: "⚔️", color: "#06b6d4", rule: "Complete 5 challenges", unlocked: true, holders: 8 },
-  { id: 3, name: "CSR Hero", icon: "🦸", color: "#8b5cf6", rule: "10 CSR activities", unlocked: false, holders: 0 },
-  { id: 4, name: "Policy Guardian", icon: "🛡️", color: "#f59e0b", rule: "Acknowledge all policies", unlocked: false, holders: 3 },
-  { id: 5, name: "Green Team", icon: "🏆", color: "#f43f5e", rule: "Dept score > 85", unlocked: false, holders: 1 },
-  { id: 6, name: "First Steps", icon: "👣", color: "#a78bfa", rule: "First login", unlocked: true, holders: 98 },
-];
-
-const rewards = [
-  { id: 1, name: "Extra Day Off", icon: "🌴", points: 2000, stock: 5, status: "active" },
-  { id: 2, name: "Amazon Gift Card ($50)", icon: "🎁", points: 1000, stock: 20, status: "active" },
-  { id: 3, name: "Team Lunch Voucher", icon: "🍽️", points: 500, stock: 15, status: "active" },
-  { id: 4, name: "Carbon-Offset Flight", icon: "✈️", points: 5000, stock: 2, status: "active" },
-  { id: 5, name: "EV Charging Credit", icon: "⚡", points: 750, stock: 0, status: "out_of_stock" },
-];
-
-const leaderboard = [
-  { rank: 1, name: "Sarah K.", dept: "Engineering", xp: 2840, badges: 4, avatar: "SK" },
-  { rank: 2, name: "Alex M.", dept: "HR", xp: 2310, badges: 3, avatar: "AM" },
-  { rank: 3, name: "Priya R.", dept: "Marketing", xp: 1950, badges: 3, avatar: "PR" },
-  { rank: 4, name: "James T.", dept: "Operations", xp: 1640, badges: 2, avatar: "JT" },
-  { rank: 5, name: "Mei L.", dept: "Finance", xp: 1420, badges: 2, avatar: "ML" },
-];
-
-const DEPT_BATTLES = [
-  { dept1: { name: "Engineering", score: 88, color: "#10b981" }, dept2: { name: "Operations", score: 61, color: "#f43f5e" } },
-  { dept1: { name: "HR", score: 92, color: "#06b6d4" }, dept2: { name: "Finance", score: 74, color: "#8b5cf6" } },
-];
+import { getGamificationData, joinChallenge, submitChallengeProof, redeemReward } from "@/actions/gamification";
 
 const DIFFICULTY_STYLES = {
   EASY: "badge-emerald",
@@ -61,13 +24,94 @@ const STATUS_STYLES = {
 export default function GamificationPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "challenges" | "badges" | "rewards" | "leaderboard" | "battles">("overview");
   const [showConfetti, setShowConfetti] = useState(false);
-  const [redeemTarget, setRedeemTarget] = useState<number | null>(null);
+  
+  // Data States
+  const [loading, setLoading] = useState(true);
+  const [challenges, setChallenges] = useState<any[]>([]);
+  const [badges, setBadges] = useState<any[]>([]);
+  const [rewards, setRewards] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [battles, setBattles] = useState<any[]>([]);
+  const [stats, setStats] = useState({ activeChallenges: 12, totalXpAwarded: "48.2K", badgesUnlocked: 234, rewardsRedeemed: 87 });
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const handleRedeem = (id: number) => {
-    setRedeemTarget(id);
-    setShowConfetti(true);
-    setTimeout(() => setShowConfetti(false), 4000);
+  // Dialog State
+  const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [selectedPartId, setSelectedPartId] = useState("");
+  const [proofText, setProofText] = useState("");
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const res = await getGamificationData();
+      setCurrentUser(res.currentUser);
+      setChallenges(res.challenges);
+      setBadges(res.badges);
+      setRewards(res.rewards);
+      setLeaderboard(res.leaderboard);
+      setBattles(res.battles);
+      setStats({
+        activeChallenges: res.stats.activeChallenges,
+        totalXpAwarded: res.stats.totalXpAwarded.toLocaleString(),
+        badgesUnlocked: res.stats.badgesUnlocked,
+        rewardsRedeemed: res.stats.rewardsRedeemed,
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleJoin = async (challengeId: string) => {
+    if (!currentUser) return;
+    try {
+      await joinChallenge(challengeId, currentUser.id);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleRedeem = async (rewardId: string) => {
+    if (!currentUser) return;
+    try {
+      await redeemReward(rewardId, currentUser.id);
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 4000);
+      loadData();
+    } catch (e: any) {
+      alert(e.message || "Failed to redeem reward.");
+    }
+  };
+
+  const handleSubmitProof = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPartId) return;
+    try {
+      await submitChallengeProof(selectedPartId, proofText);
+      setProofModalOpen(false);
+      setProofText("");
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (loading && challenges.length === 0) {
+    return (
+      <div className="w-full h-96 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-2 animate-bounce">🏆</div>
+          <p className="font-orbitron text-xs text-purple-400">Loading Gamification engine twin...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -78,18 +122,27 @@ export default function GamificationPage() {
           <h1 className="font-orbitron text-2xl font-bold gradient-text-purple">🏆 Gamification</h1>
           <p className="text-sm text-muted mt-1">Challenges, XP, badges & rewards · Department battles</p>
         </div>
-        <button className="px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 text-amber-400 border border-amber-500/25 hover:bg-amber-500/10 transition-colors">
-          <Plus size={15} /> New Challenge
-        </button>
+        {currentUser && (
+          <div className="flex items-center gap-4 bg-white/5 border border-white/10 px-4 py-2 rounded-xl">
+            <div>
+              <p className="text-xs text-muted">My Points Balance</p>
+              <p className="font-orbitron text-sm font-bold text-amber-400">{currentUser.points} pts</p>
+            </div>
+            <div className="border-l border-white/10 pl-4">
+              <p className="text-xs text-muted">My XP</p>
+              <p className="font-orbitron text-sm font-bold text-purple-400">{currentUser.xp} XP</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Active Challenges", value: "12", icon: <Swords size={16} className="text-amber-400" />, bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
-          { label: "Total XP Awarded", value: "48.2K", icon: <Zap size={16} className="text-cyan-400" />, bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
-          { label: "Badges Unlocked", value: "234", icon: <Medal size={16} className="text-purple-400" />, bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.15)" },
-          { label: "Rewards Redeemed", value: "87", icon: <Gift size={16} className="text-rose-400" />, bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.15)" },
+          { label: "Active Challenges", value: String(stats.activeChallenges), icon: <Swords size={16} className="text-amber-400" />, bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
+          { label: "Total XP Awarded", value: String(stats.totalXpAwarded), icon: <Zap size={16} className="text-cyan-400" />, bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
+          { label: "Badges Unlocked", value: String(stats.badgesUnlocked), icon: <Medal size={16} className="text-purple-400" />, bg: "rgba(139,92,246,0.08)", border: "rgba(139,92,246,0.15)" },
+          { label: "Rewards Redeemed", value: String(stats.rewardsRedeemed), icon: <Gift size={16} className="text-rose-400" />, bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.15)" },
         ].map((s, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="glass-card p-4" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
@@ -118,7 +171,7 @@ export default function GamificationPage() {
               <div className="absolute top-0 right-0 opacity-5 group-hover:opacity-10 transition-opacity text-6xl p-2">⚡</div>
               <div className="flex items-start justify-between mb-3">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${DIFFICULTY_STYLES[c.difficulty as keyof typeof DIFFICULTY_STYLES]}`}>{c.difficulty}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[c.status as keyof typeof STATUS_STYLES]}`}>{c.status.replace("_", " ")}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_STYLES[c.status as keyof typeof STATUS_STYLES]}`}>{c.status}</span>
               </div>
               <h3 className="text-sm font-semibold text-slate-200 mb-1">{c.title}</h3>
               <p className="text-xs text-muted mb-3">{c.category} · Deadline: {c.deadline}</p>
@@ -129,9 +182,30 @@ export default function GamificationPage() {
                 </div>
                 <span className="text-xs text-muted">{c.participants} participants</span>
               </div>
-              <button className="w-full mt-4 py-1.5 rounded-lg text-xs font-medium border border-amber-500/25 text-amber-400 hover:bg-amber-500/10 transition-colors">
-                {c.status === "DRAFT" ? "Activate Challenge" : "View Participation"}
-              </button>
+              
+              {!c.joined && (
+                <button 
+                  onClick={() => handleJoin(c.id)}
+                  className="w-full mt-4 py-1.5 rounded-lg text-xs font-medium border border-amber-500/25 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                >
+                  Join Challenge
+                </button>
+              )}
+
+              {c.joined && c.approvalStatus === "pending" && (
+                <button 
+                  onClick={() => { setSelectedPartId(c.participationId); setProofModalOpen(true); }}
+                  className="w-full mt-4 py-1.5 rounded-lg text-xs font-medium bg-amber-500 text-white shadow-lg"
+                >
+                  Submit Proof
+                </button>
+              )}
+
+              {c.joined && c.approvalStatus === "approved" && (
+                <div className="w-full mt-4 py-1.5 rounded-lg text-xs font-medium text-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  Completed & Verified ✓
+                </div>
+              )}
             </motion.div>
           ))}
         </motion.div>
@@ -168,6 +242,7 @@ export default function GamificationPage() {
               className={`glass-card p-5 ${r.status === "out_of_stock" ? "opacity-50" : ""}`} whileHover={{ y: r.status !== "out_of_stock" ? -2 : 0 }}>
               <div className="text-3xl mb-3">{r.icon}</div>
               <h3 className="text-sm font-semibold text-slate-200 mb-1">{r.name}</h3>
+              <p className="text-xs text-muted mb-3 h-10">{r.description}</p>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-1.5">
                   <Star size={12} className="text-amber-400" />
@@ -177,14 +252,16 @@ export default function GamificationPage() {
               </div>
               <button
                 onClick={() => r.status === "active" && handleRedeem(r.id)}
-                disabled={r.status === "out_of_stock"}
+                disabled={r.status === "out_of_stock" || (currentUser && currentUser.points < r.points)}
                 className={`w-full py-2 rounded-xl text-xs font-medium transition-all ${
                   r.status === "out_of_stock"
                     ? "bg-white/5 text-muted cursor-not-allowed"
-                    : "btn-emerald"
+                    : currentUser && currentUser.points < r.points
+                      ? "bg-white/5 text-rose-400 border border-rose-500/20 cursor-not-allowed"
+                      : "btn-emerald"
                 }`}
               >
-                {r.status === "out_of_stock" ? "Out of Stock" : "Redeem Reward"}
+                {r.status === "out_of_stock" ? "Out of Stock" : currentUser && currentUser.points < r.points ? "Insufficient Points" : "Redeem Reward"}
               </button>
             </motion.div>
           ))}
@@ -218,11 +295,6 @@ export default function GamificationPage() {
                 </div>
                 <p className="text-xs text-muted">{person.badges} badges</p>
               </div>
-              {/* XP Bar */}
-              <div className="w-24 bg-white/5 rounded-full h-1.5 hidden md:block">
-                <motion.div className="h-1.5 rounded-full" style={{ background: "linear-gradient(90deg, #f59e0b, #10b981)" }}
-                  initial={{ width: 0 }} animate={{ width: `${(person.xp / 2840) * 100}%` }} transition={{ duration: 1, delay: i * 0.1 }} />
-              </div>
             </motion.div>
           ))}
         </motion.div>
@@ -238,8 +310,8 @@ export default function GamificationPage() {
               <span className="text-xs badge-amber px-2 py-0.5 rounded-full ml-2">LIVE</span>
             </div>
 
-            {DEPT_BATTLES.map((battle, i) => {
-              const total = battle.dept1.score + battle.dept2.score;
+            {battles.map((battle, i) => {
+              const total = Math.max(1, battle.dept1.score + battle.dept2.score);
               const d1pct = (battle.dept1.score / total) * 100;
               const d2pct = 100 - d1pct;
               const winner = battle.dept1.score > battle.dept2.score ? battle.dept1 : battle.dept2;
@@ -287,18 +359,6 @@ export default function GamificationPage() {
               );
             })}
           </div>
-
-          <div className="glass-card-amber p-6">
-            <h3 className="font-orbitron text-sm font-semibold text-amber-400 mb-1">🔥 Eco Sprint — Active Event</h3>
-            <p className="text-xs text-muted mb-4">48-hour team sustainability sprint · Ends in 6h 24m</p>
-            <div className="w-full bg-white/5 rounded-full h-2 mb-2">
-              <motion.div className="h-2 rounded-full battle-bar-active" style={{ background: "linear-gradient(90deg, #f59e0b, #f43f5e)", width: "74%" }} />
-            </div>
-            <div className="flex justify-between text-xs text-muted">
-              <span>Started 41h ago</span>
-              <span>74% of sprint complete</span>
-            </div>
-          </div>
         </motion.div>
       )}
 
@@ -323,22 +383,63 @@ export default function GamificationPage() {
               ))}
             </div>
           </motion.div>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card p-6 xl:col-span-2">
-            <h3 className="font-orbitron text-sm font-semibold text-slate-200 mb-4">Challenge Status Overview</h3>
-            <div className="grid grid-cols-5 gap-3">
-              {(["DRAFT", "ACTIVE", "UNDER_REVIEW", "COMPLETED", "ARCHIVED"] as const).map((status) => {
-                const count = challenges.filter((c) => c.status === status).length;
-                return (
-                  <div key={status} className="text-center p-3 rounded-xl" style={{ background: "rgba(255,255,255,0.03)" }}>
-                    <p className="font-orbitron text-2xl font-bold text-slate-200">{count}</p>
-                    <p className="text-[9px] text-muted mt-1 uppercase tracking-wider">{status.replace("_", " ")}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
         </div>
       )}
+
+      {/* Submit Proof Modal */}
+      <AnimatePresence>
+        {proofModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md glass-card border border-white/10 p-6 relative overflow-hidden"
+            >
+              <button 
+                onClick={() => setProofModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-2 mb-4">
+                <Medal className="text-amber-400" size={18} />
+                <h3 className="font-orbitron text-base font-semibold text-slate-200">Submit Challenge Proof</h3>
+              </div>
+
+              <form onSubmit={handleSubmitProof} className="space-y-4">
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Evidence / Proof Details</label>
+                  <textarea 
+                    required 
+                    value={proofText} 
+                    onChange={(e) => setProofText(e.target.value)}
+                    placeholder="Describe how you completed the challenge..."
+                    className="input-field text-xs w-full h-24"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setProofModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 border border-white/10 hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-emerald px-4 py-2 rounded-xl text-xs font-semibold"
+                  >
+                    Submit Proof
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
