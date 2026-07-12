@@ -1,8 +1,9 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Settings, Bell, Leaf, Users, Shield, Zap, Save, ToggleLeft, ToggleRight } from "lucide-react";
+import { getAppSettings, saveAppSettings } from "@/actions/settings";
 
 function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -39,7 +40,40 @@ export default function SettingsPage() {
 
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
+  useEffect(() => {
+    getAppSettings().then((res) => {
+      setSettings({
+        autoEmission: res.autoEmissionCalculation,
+        evidenceRequired: res.evidenceRequired,
+        badgeAutoAward: res.badgeAutoAward,
+        emailNotifs: res.emailNotifications,
+        inAppNotifs: res.inAppNotifications,
+        notifyCompliance: res.notifyComplianceIssue,
+        notifyBadge: res.notifyBadgeUnlock,
+        notifyCsr: res.notifyCsrApproval,
+        notifyPolicy: res.notifyPolicyReminder,
+        envWeight: Math.round(res.envWeight * 100),
+        socialWeight: Math.round(res.socialWeight * 100),
+        govWeight: Math.round(res.govWeight * 100),
+      });
+    });
+  }, []);
+
+  const handleSave = async () => {
+    await saveAppSettings({
+      autoEmissionCalculation: settings.autoEmission,
+      evidenceRequired: settings.evidenceRequired,
+      badgeAutoAward: settings.badgeAutoAward,
+      emailNotifications: settings.emailNotifs,
+      inAppNotifications: settings.inAppNotifs,
+      notifyComplianceIssue: settings.notifyCompliance,
+      notifyBadgeUnlock: settings.notifyBadge,
+      notifyCsrApproval: settings.notifyCsr,
+      notifyPolicyReminder: settings.notifyPolicy,
+      envWeight: settings.envWeight / 100,
+      socialWeight: settings.socialWeight / 100,
+      govWeight: settings.govWeight / 100,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
