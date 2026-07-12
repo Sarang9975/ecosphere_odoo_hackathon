@@ -2,7 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-import { EmissionSource } from "@prisma/client";
+import { cookies } from "next/headers";
+import { EmissionSource, GoalStatus } from "@prisma/client";
 import { calculateDepartmentScores } from "@/lib/esgEngine";
 
 export async function getEmissionsData() {
@@ -113,10 +114,25 @@ export async function logEmissionTransaction(data: {
     }
   }
 
+  let finalDeptId = data.departmentId;
+  if (!finalDeptId) {
+    const cookieStore = await cookies();
+    const userId = cookieStore.get("user_id")?.value;
+    if (userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { departmentId: true },
+      });
+      if (user?.departmentId) {
+        finalDeptId = user.departmentId;
+      }
+    }
+  }
+
   const transaction = await prisma.carbonTransaction.create({
     data: {
       source: data.source,
-      departmentId: data.departmentId,
+      departmentId: finalDeptId,
       emissionFactorId: data.emissionFactorId,
       quantity: data.quantity,
       unit: data.unit,
@@ -127,8 +143,8 @@ export async function logEmissionTransaction(data: {
   });
 
   // Revalidate & recalculate
-  if (data.departmentId) {
-    await calculateDepartmentScores(data.departmentId, "Q2-2026");
+  if (finalDeptId) {
+    await calculateDepartmentScores(finalDeptId, "Q2-2026");
   }
 
   revalidatePath("/environmental");
@@ -149,6 +165,7 @@ export async function addEnvironmentalGoal(data: {
   unit: string;
   category: string;
   departmentId?: string;
+  deadline?: Date;
 }) {
   const goal = await prisma.environmentalGoal.create({
     data,
@@ -174,4 +191,32 @@ export async function addEmissionFactor(data: {
   });
   revalidatePath("/environmental");
   return factor;
+}
+
+export async function deleteEmissionFactor(id: string) {
+  await prisma.emissionFactor.delete({ where: { id } });
+  revalidatePath("/environmental");
+}
+
+export async function updateEnvironmentalGoal(id: string, currentValue: number, status?: GoalStatus) {
+  const goal = await prisma.environmentalGoal.findUnique({ where: { id } });
+  if (!goal) throw new Error("Goal not found");
+
+  const finalStatus = status || (currentValue >= goal.targetValue ? GoalStatus.ACHIEVED : GoalStatus.IN_PROGRESS);
+
+  const updated = await prisma.environmentalGoal.update({
+    where: { id },
+    data: {
+      currentValue,
+      status: finalStatus,
+    },
+  });
+
+  if (goal.departmentId) {
+    await calculateDepartmentScores(goal.departmentId, "Q2-2026");
+  }
+
+  revalidatePath("/environmental");
+  revalidatePath("/dashboard");
+  return updated;
 }
