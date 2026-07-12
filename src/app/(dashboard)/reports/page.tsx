@@ -33,15 +33,25 @@ const deptESG = [
 
 export default function ReportsPage() {
   const [activeReport, setActiveReport] = useState("esg_summary");
-  const [filters, setFilters] = useState({ department: "all", dateRange: "Q2-2026", module: "all" });
+  const [filters, setFilters] = useState({ department: "all", dateRange: "Q2-2026", module: "all", employee: "all" });
   const [generating, setGenerating] = useState(false);
 
   const handleGenerate = (format: string) => {
     setGenerating(true);
+    const params = new URLSearchParams({
+      format: format.toLowerCase(),
+      module: filters.module,
+      department: filters.department,
+      dateRange: filters.dateRange,
+      employee: filters.employee,
+    });
+    
+    // Trigger download
+    window.location.href = `/api/reports/download?${params.toString()}`;
+    
     setTimeout(() => {
       setGenerating(false);
-      alert(`${format} report generated! In a live deployment, this would download the file.`);
-    }, 1500);
+    }, 1000);
   };
 
   return (
@@ -68,10 +78,7 @@ export default function ReportsPage() {
               {r.icon}
             </div>
             <p className="text-xs font-semibold text-slate-200">{r.label}</p>
-            <p className="text-xs text-muted mt-0.5">{r.desc}</p>
-            {activeReport === r.id && (
-              <motion.div className="mt-2 h-0.5 rounded-full" style={{ background: r.color }} layoutId="reportUnderline" />
-            )}
+            <p className="text-[10px] text-muted mt-1">{r.desc}</p>
           </motion.button>
         ))}
       </div>
@@ -83,19 +90,60 @@ export default function ReportsPage() {
           <h3 className="font-orbitron text-sm font-semibold text-slate-200">Report Filters</h3>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: "Department", options: ["All Departments", "Engineering", "HR", "Marketing", "Finance", "Operations"] },
-            { label: "Date Range", options: ["Q2 2026", "Q1 2026", "Q4 2025", "FY 2025", "Custom Range"] },
-            { label: "Module", options: ["All Modules", "Environmental", "Social", "Governance"] },
-            { label: "Employee", options: ["All Employees", "Sarah K.", "Alex M.", "Priya R."] },
-          ].map((f) => (
-            <div key={f.label}>
-              <label className="text-xs text-muted mb-1.5 block">{f.label}</label>
-              <select className="input-field text-xs">
-                {f.options.map((o) => <option key={o}>{o}</option>)}
-              </select>
-            </div>
-          ))}
+          <div>
+            <label className="text-xs text-muted mb-1.5 block">Department</label>
+            <select 
+              value={filters.department} 
+              onChange={(e) => setFilters(prev => ({ ...prev, department: e.target.value }))}
+              className="input-field text-xs bg-[#0a101d] w-full"
+            >
+              <option value="all">All Departments</option>
+              <option value="Engineering">Engineering</option>
+              <option value="HR">HR</option>
+              <option value="Marketing">Marketing</option>
+              <option value="Finance">Finance</option>
+              <option value="Operations">Operations</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1.5 block">Date Range</label>
+            <select 
+              value={filters.dateRange} 
+              onChange={(e) => setFilters(prev => ({ ...prev, dateRange: e.target.value }))}
+              className="input-field text-xs bg-[#0a101d] w-full"
+            >
+              <option value="Q2-2026">Q2 2026</option>
+              <option value="Q1-2026">Q1 2026</option>
+              <option value="Q4-2025">Q4 2025</option>
+              <option value="FY-2025">FY 2025</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1.5 block">Module</label>
+            <select 
+              value={filters.module} 
+              onChange={(e) => setFilters(prev => ({ ...prev, module: e.target.value }))}
+              className="input-field text-xs bg-[#0a101d] w-full"
+            >
+              <option value="all">All Modules</option>
+              <option value="environmental">Environmental</option>
+              <option value="social">Social</option>
+              <option value="governance">Governance</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-muted mb-1.5 block">Employee</label>
+            <select 
+              value={filters.employee} 
+              onChange={(e) => setFilters(prev => ({ ...prev, employee: e.target.value }))}
+              className="input-field text-xs bg-[#0a101d] w-full"
+            >
+              <option value="all">All Employees</option>
+              <option value="Sarah K.">Sarah K.</option>
+              <option value="Alex M.">Alex M.</option>
+              <option value="Priya R.">Priya R.</option>
+            </select>
+          </div>
         </div>
 
         {/* Export buttons */}
