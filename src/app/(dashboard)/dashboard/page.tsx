@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, useEffect } from "react";
+import { getDashboardData } from "@/actions/dashboard";
 import { PlanetVisualizer } from "@/components/dashboard/PlanetVisualizer";
 import { CarbonPulseTicker } from "@/components/dashboard/CarbonPulseTicker";
 import { KPICard } from "@/components/dashboard/KPICard";
@@ -85,6 +87,55 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 };
 
 export default function DashboardPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDashboardData().then((res) => {
+      setData(res);
+      setLoading(false);
+    });
+  }, []);
+
+  const kpis = data?.kpis || {
+    totalCo2: "2,340",
+    csrParticipants: 487,
+    complianceRate: 94,
+    activeChallenges: 12
+  };
+
+  const overall = data?.overallScore || {
+    total: 76,
+    env: 74,
+    soc: 82,
+    gov: 71
+  };
+
+  const currentDeptScores = data?.departmentScores || [
+    { name: "Engineering", score: 88 },
+    { name: "Marketing", score: 82 },
+    { name: "HR", score: 79 },
+    { name: "Finance", score: 74 },
+    { name: "Operations", score: 61 },
+  ];
+
+  const currentAlerts = data?.alerts || [
+    { title: "Emissions Disclosure Overdue", dept: "Operations", severity: "critical", days: 7 },
+    { title: "5 Policies Unacknowledged", dept: "Engineering", severity: "warning", days: 3 },
+    { title: "Carbon Audit Pending Review", dept: "Finance", severity: "info", days: 0 },
+  ];
+
+  if (loading) {
+    return (
+      <div className="w-full h-screen flex items-center justify-center" style={{ background: "#030a14" }}>
+        <div className="text-center">
+          <div className="text-5xl mb-4 animate-spin">🌍</div>
+          <p className="font-orbitron text-sm text-emerald-400">Loading ESG intelligence twin...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
       {/* ── Header ── */}
@@ -116,7 +167,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Total CO₂ Emissions"
-          value="2,340"
+          value={kpis.totalCo2}
           unit="tCO₂e"
           change={-12}
           changeLabel="vs last quarter"
@@ -126,7 +177,7 @@ export default function DashboardPage() {
         />
         <KPICard
           title="CSR Participants"
-          value="487"
+          value={String(kpis.csrParticipants)}
           unit="employees"
           change={8}
           changeLabel="this month"
@@ -136,7 +187,7 @@ export default function DashboardPage() {
         />
         <KPICard
           title="Compliance Rate"
-          value="94"
+          value={String(kpis.complianceRate)}
           unit="%"
           change={2}
           changeLabel="vs last month"
@@ -146,7 +197,7 @@ export default function DashboardPage() {
         />
         <KPICard
           title="Active Challenges"
-          value="12"
+          value={String(kpis.activeChallenges)}
           unit="challenges"
           change={3}
           changeLabel="new this week"
@@ -201,9 +252,9 @@ export default function DashboardPage() {
           <p className="text-xs text-muted mb-6">Weighted average · July 2026</p>
 
           <div className="flex justify-around mb-6">
-            <ESGScoreRing label="Environmental" score={74} color="#10b981" size={90} />
-            <ESGScoreRing label="Social" score={82} color="#06b6d4" size={90} />
-            <ESGScoreRing label="Governance" score={71} color="#8b5cf6" size={90} />
+            <ESGScoreRing label="Environmental" score={overall.env} color="#10b981" size={90} />
+            <ESGScoreRing label="Social" score={overall.soc} color="#06b6d4" size={90} />
+            <ESGScoreRing label="Governance" score={overall.gov} color="#8b5cf6" size={90} />
           </div>
 
           {/* Overall score */}
@@ -212,7 +263,7 @@ export default function DashboardPage() {
             style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.12)" }}
           >
             <p className="text-xs text-muted mb-1">Overall ESG Score</p>
-            <p className="font-orbitron text-3xl font-bold text-emerald-400">76</p>
+            <p className="font-orbitron text-3xl font-bold text-emerald-400">{overall.total}</p>
             <p className="text-xs text-muted mt-1">40% E · 30% S · 30% G</p>
           </div>
 
@@ -291,7 +342,7 @@ export default function DashboardPage() {
           </h2>
           <p className="text-xs text-muted mb-5">Overall ESG score by department</p>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={deptScores} layout="vertical" margin={{ left: 10, right: 20 }}>
+            <BarChart data={currentDeptScores} layout="vertical" margin={{ left: 10, right: 20 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
               <XAxis type="number" domain={[0, 100]} tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} width={75} />
@@ -306,8 +357,8 @@ export default function DashboardPage() {
                 }
               />
               <Bar dataKey="score" radius={[0, 6, 6, 0]} maxBarSize={20}>
-                {deptScores.map((_, i) => (
-                  <Cell key={i} fill={DEPT_COLORS[i]} />
+                {currentDeptScores.map((_, i) => (
+                  <Cell key={i} fill={DEPT_COLORS[i % DEPT_COLORS.length]} />
                 ))}
               </Bar>
             </BarChart>
@@ -325,14 +376,10 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2 mb-4">
           <AlertTriangle size={14} className="text-amber-400" />
           <h2 className="font-orbitron text-sm font-semibold text-slate-200">Action Required</h2>
-          <span className="text-xs badge-rose px-2 py-0.5 rounded-full ml-1">3 urgent</span>
+          <span className="text-xs badge-rose px-2 py-0.5 rounded-full ml-1">{currentAlerts.length} urgent</span>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {[
-            { title: "Emissions Disclosure Overdue", dept: "Operations", severity: "critical", days: 7 },
-            { title: "5 Policies Unacknowledged", dept: "Engineering", severity: "warning", days: 3 },
-            { title: "Carbon Audit Pending Review", dept: "Finance", severity: "info", days: 0 },
-          ].map((alert, i) => (
+          {currentAlerts.map((alert: any, i: number) => (
             <motion.div
               key={i}
               whileHover={{ x: 2 }}
