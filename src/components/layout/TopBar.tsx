@@ -1,8 +1,9 @@
 "use client";
 
-import { Bell, Search, User } from "lucide-react";
+import { Bell, Search, User, LogOut } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect, useTransition } from "react";
+import { getLoggedInUser, logout } from "@/actions/auth";
 
 interface TopBarProps {
   title: string;
@@ -19,6 +20,21 @@ const mockNotifications = [
 export function TopBar({ title, subtitle }: TopBarProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    getLoggedInUser().then(res => {
+      setCurrentUser(res);
+    });
+  }, []);
+
+  const handleLogout = () => {
+    startTransition(async () => {
+      await logout();
+    });
+  };
 
   return (
     <header className="h-16 flex items-center justify-between px-6 border-b border-white/5 bg-[rgba(8,12,20,0.8)] backdrop-blur-xl sticky top-0 z-40">
@@ -112,14 +128,49 @@ export function TopBar({ title, subtitle }: TopBarProps) {
         </div>
 
         {/* User */}
-        <div className="flex items-center gap-2.5 pl-3 border-l border-white/5">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
-            <User size={14} className="text-white" />
-          </div>
-          <div className="hidden sm:block">
-            <p className="text-xs font-medium text-slate-200">Admin</p>
-            <p className="text-xs text-muted">EcoSphere</p>
-          </div>
+        <div className="relative">
+          <button
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+            className="flex items-center gap-2.5 pl-3 border-l border-white/5 text-left focus:outline-none"
+          >
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center">
+              <User size={14} className="text-white" />
+            </div>
+            <div className="hidden sm:block">
+              <p className="text-xs font-medium text-slate-200 truncate max-w-[120px]">
+                {currentUser?.name || "Accessing..."}
+              </p>
+              <p className="text-[10px] text-muted capitalize">
+                {currentUser?.role?.toLowerCase() || "EcoSphere"}
+              </p>
+            </div>
+          </button>
+
+          <AnimatePresence>
+            {showProfileMenu && (
+              <motion.div
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                className="absolute right-0 top-10 w-44 glass-card border border-white/10 py-1.5 shadow-2xl z-50 overflow-hidden"
+              >
+                <div className="px-3 py-2 border-b border-white/5">
+                  <p className="text-xs text-muted">Signed in as</p>
+                  <p className="text-xs font-semibold text-slate-200 truncate mt-0.5">
+                    {currentUser?.name || "EcoSphere"}
+                  </p>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  disabled={isPending}
+                  className="w-full text-left px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 flex items-center gap-2 transition-colors"
+                >
+                  <LogOut size={13} />
+                  <span>{isPending ? "Logging out..." : "Log Out"}</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </header>

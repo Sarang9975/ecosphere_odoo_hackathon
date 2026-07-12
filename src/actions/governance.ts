@@ -2,10 +2,17 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { AuditStatus, IssueStatus, Severity, PolicyCategory, Status, NotificationType } from "@prisma/client";
 import { calculateDepartmentScores } from "@/lib/esgEngine";
 
 export async function getGovernanceData(userId?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+
   const policies = await prisma.eSGPolicy.findMany({
     orderBy: { effectiveDate: "desc" },
     include: { acknowledgements: true },
@@ -41,8 +48,8 @@ export async function getGovernanceData(userId?: string) {
       requires: p.requiresAck,
       ackRate: rate,
       status: p.status.toLowerCase(),
-      userAcknowledged: userId 
-        ? p.acknowledgements.some(ack => ack.userId === userId) 
+      userAcknowledged: finalUserId 
+        ? p.acknowledgements.some(ack => ack.userId === finalUserId) 
         : false,
     };
   });
@@ -103,11 +110,18 @@ export async function createPolicy(data: {
   return policy;
 }
 
-export async function acknowledgePolicy(policyId: string, userId: string, ipAddress?: string) {
+export async function acknowledgePolicy(policyId: string, userId?: string, ipAddress?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+  if (!finalUserId) throw new Error("Not logged in");
+
   const ack = await prisma.policyAcknowledgement.create({
     data: {
       policyId,
-      userId,
+      userId: finalUserId,
       ipAddress: ipAddress || "127.0.0.1",
     },
     include: { user: true },

@@ -81,7 +81,7 @@ async function main() {
     data: {
       name: "Sarah K.",
       email: "sarah.k@ecosphere.com",
-      role: Role.EMPLOYEE,
+      role: Role.MANAGER,
       xp: 2840,
       points: 1500,
       departmentId: engineering.id,
@@ -101,7 +101,7 @@ async function main() {
     data: {
       name: "Priya R.",
       email: "priya.r@ecosphere.com",
-      role: Role.EMPLOYEE,
+      role: Role.MANAGER,
       xp: 1950,
       points: 1000,
       departmentId: marketing.id,
