@@ -1,9 +1,10 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sliders, TrendingUp, Leaf, Users, Shield, BarChart2, Plus, X, Play } from "lucide-react";
 import { RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
+import { getDashboardData } from "@/actions/dashboard";
 
 interface Scenario {
   id: string;
@@ -18,32 +19,48 @@ interface Scenario {
   };
 }
 
-function computeESG(s: Scenario["levers"]) {
-  const env = Math.min(100, 74 + s.fleetReduction * 0.15 + s.renewableEnergy * 0.18 + s.wasteReduction * 0.08);
-  const soc = Math.min(100, 82 + s.csrIncrease * 0.12);
-  const gov = Math.min(100, 71 + s.governanceImprovements * 0.2);
-  const total = env * 0.4 + soc * 0.3 + gov * 0.3;
-  return { env: Math.round(env), soc: Math.round(soc), gov: Math.round(gov), total: Math.round(total * 10) / 10 };
-}
-
 const SCENARIO_COLORS = ["#10b981", "#06b6d4", "#8b5cf6"];
-
 const DEFAULT_LEVERS = { fleetReduction: 0, renewableEnergy: 0, csrIncrease: 0, governanceImprovements: 0, wasteReduction: 0 };
 
 export default function SimulatorPage() {
+  const [baseScores, setBaseScores] = useState({ env: 74, soc: 82, gov: 71, total: 76 });
   const [scenarios, setScenarios] = useState<Scenario[]>([
     { id: "s1", name: "Baseline", color: SCENARIO_COLORS[0], levers: { ...DEFAULT_LEVERS } },
   ]);
   const [activeScenario, setActiveScenario] = useState("s1");
   const [running, setRunning] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getDashboardData().then(res => {
+      if (res?.overallScore) {
+        setBaseScores({
+          env: res.overallScore.env,
+          soc: res.overallScore.soc,
+          gov: res.overallScore.gov,
+          total: res.overallScore.total,
+        });
+      }
+      setLoading(false);
+    });
+  }, []);
 
   const active = scenarios.find((s) => s.id === activeScenario)!;
+
+  const computeESG = (s: Scenario["levers"]) => {
+    const env = Math.min(100, baseScores.env + s.fleetReduction * 0.15 + s.renewableEnergy * 0.18 + s.wasteReduction * 0.08);
+    const soc = Math.min(100, baseScores.soc + s.csrIncrease * 0.12);
+    const gov = Math.min(100, baseScores.gov + s.governanceImprovements * 0.2);
+    const total = env * 0.4 + soc * 0.3 + gov * 0.3;
+    return { env: Math.round(env), soc: Math.round(soc), gov: Math.round(gov), total: Math.round(total * 10) / 10 };
+  };
+
   const scores = computeESG(active.levers);
 
   const radarData = [
-    { subject: "Environmental", A: 74, B: scores.env },
-    { subject: "Social", A: 82, B: scores.soc },
-    { subject: "Governance", A: 71, B: scores.gov },
+    { subject: "Environmental", A: baseScores.env, B: scores.env },
+    { subject: "Social", A: baseScores.soc, B: scores.soc },
+    { subject: "Governance", A: baseScores.gov, B: scores.gov },
     { subject: "Carbon Red.", A: 50, B: Math.min(100, 50 + active.levers.fleetReduction + active.levers.renewableEnergy) },
     { subject: "CSR Impact", A: 60, B: Math.min(100, 60 + active.levers.csrIncrease) },
   ];
@@ -82,9 +99,20 @@ export default function SimulatorPage() {
 
   const projectionData = Array.from({ length: 6 }, (_, i) => ({
     period: `Q${(i % 4) + 1}'${26 + Math.floor(i / 4)}`,
-    baseline: Math.round(74 + i * 0.5),
-    projected: Math.round(scores.total + i * (scores.total > 76 ? 1.2 : 0.3)),
+    baseline: Math.round(baseScores.total + i * 0.5),
+    projected: Math.round(scores.total + i * (scores.total > baseScores.total ? 1.2 : 0.3)),
   }));
+
+  if (loading) {
+    return (
+      <div className="w-full h-96 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-2 animate-bounce">🎯</div>
+          <p className="font-orbitron text-xs text-rose-400">Loading simulator baseline...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -177,10 +205,10 @@ export default function SimulatorPage() {
           {/* Score delta cards */}
           <div className="grid grid-cols-4 gap-3">
             {[
-              { label: "Environmental", val: scores.env, base: 74, color: "#10b981" },
-              { label: "Social", val: scores.soc, base: 82, color: "#06b6d4" },
-              { label: "Governance", val: scores.gov, base: 71, color: "#8b5cf6" },
-              { label: "Total ESG", val: scores.total, base: 76, color: "#f59e0b" },
+              { label: "Environmental", val: scores.env, base: baseScores.env, color: "#10b981" },
+              { label: "Social", val: scores.soc, base: baseScores.soc, color: "#06b6d4" },
+              { label: "Governance", val: scores.gov, base: baseScores.gov, color: "#8b5cf6" },
+              { label: "Total ESG", val: scores.total, base: baseScores.total, color: "#f59e0b" },
             ].map((s) => (
               <motion.div key={s.label} className="glass-card p-4 text-center"
                 animate={{ boxShadow: s.val > s.base ? `0 0 20px ${s.color}20` : "none" }}>
