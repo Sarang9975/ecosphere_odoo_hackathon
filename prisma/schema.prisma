@@ -6,3 +6,537 @@ datasource db {
 generator client {
   provider = "prisma-client-js"
 }
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(EMPLOYEE)
+  xp            Int       @default(0)
+  points        Int       @default(0)
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts              Account[]
+  sessions              Session[]
+  employeeParticipation EmployeeParticipation[]
+  challengeParticipation ChallengeParticipation[]
+  policyAcknowledgements PolicyAcknowledgement[]
+  badgeAwards           BadgeAward[]
+  rewardRedemptions     RewardRedemption[]
+  notifications         Notification[]
+  ownedComplianceIssues ComplianceIssue[] @relation("IssueOwner")
+  auditsConducted       Audit[]
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+// ─── MASTER DATA ─────────────────────────────────────────────────────────────
+
+model Department {
+  id              String  @id @default(cuid())
+  name            String
+  code            String  @unique
+  head            String?
+  parentId        String?
+  parent          Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children        Department[] @relation("DeptHierarchy")
+  employeeCount   Int     @default(0)
+  status          Status  @default(ACTIVE)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  users           User[]
+  carbonTransactions CarbonTransaction[]
+  departmentScores   DepartmentScore[]
+
+  @@map("departments")
+}
+
+model Category {
+  id        String       @id @default(cuid())
+  name      String
+  type      CategoryType
+  status    Status       @default(ACTIVE)
+  createdAt DateTime     @default(now())
+
+  csrActivities CSRActivity[]
+  challenges    Challenge[]
+
+  @@map("categories")
+}
+
+enum CategoryType {
+  CSR_ACTIVITY
+  CHALLENGE
+}
+
+model EmissionFactor {
+  id          String  @id @default(cuid())
+  name        String
+  category    String
+  unit        String
+  factor      Float
+  source      String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  carbonTransactions CarbonTransaction[]
+
+  @@map("emission_factors")
+}
+
+model ProductESGProfile {
+  id              String  @id @default(cuid())
+  productName     String
+  productCode     String? @unique
+  carbonPerUnit   Float   @default(0)
+  recyclable      Boolean @default(false)
+  sustainablySourced Boolean @default(false)
+  esgScore        Float   @default(0)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("product_esg_profiles")
+}
+
+model EnvironmentalGoal {
+  id           String     @id @default(cuid())
+  title        String
+  description  String?
+  targetValue  Float
+  currentValue Float      @default(0)
+  unit         String
+  category     String
+  deadline     DateTime?
+  status       GoalStatus @default(IN_PROGRESS)
+  departmentId String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("environmental_goals")
+}
+
+enum GoalStatus {
+  IN_PROGRESS
+  ACHIEVED
+  AT_RISK
+  MISSED
+}
+
+model ESGPolicy {
+  id           String        @id @default(cuid())
+  title        String
+  description  String
+  category     PolicyCategory
+  version      String        @default("1.0")
+  effectiveDate DateTime
+  expiryDate   DateTime?
+  status       Status        @default(ACTIVE)
+  requiresAck  Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  acknowledgements PolicyAcknowledgement[]
+  audits           Audit[]
+
+  @@map("esg_policies")
+}
+
+enum PolicyCategory {
+  ENVIRONMENTAL
+  SOCIAL
+  GOVERNANCE
+  DATA_PRIVACY
+  HEALTH_SAFETY
+  DIVERSITY
+  ANTI_CORRUPTION
+}
+
+model Badge {
+  id          String     @id @default(cuid())
+  name        String
+  description String
+  icon        String     @default("🏆")
+  unlockRule  UnlockRule
+  xpRequired  Int?
+  challengesRequired Int?
+  color       String     @default("#F59E0B")
+  createdAt   DateTime   @default(now())
+
+  awards BadgeAward[]
+
+  @@map("badges")
+}
+
+enum UnlockRule {
+  XP_THRESHOLD
+  CHALLENGE_COUNT
+  CSR_COUNT
+  FIRST_LOGIN
+  PERFECT_SCORE
+}
+
+model Reward {
+  id             String   @id @default(cuid())
+  name           String
+  description    String
+  pointsRequired Int
+  stock          Int      @default(0)
+  status         Status   @default(ACTIVE)
+  image          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  redemptions RewardRedemption[]
+
+  @@map("rewards")
+}
+
+// ─── TRANSACTIONAL DATA ──────────────────────────────────────────────────────
+
+model CarbonTransaction {
+  id               String              @id @default(cuid())
+  source           EmissionSource
+  departmentId     String?
+  department       Department?         @relation(fields: [departmentId], references: [id])
+  emissionFactorId String?
+  emissionFactor   EmissionFactor?     @relation(fields: [emissionFactorId], references: [id])
+  quantity         Float
+  unit             String
+  co2eKg           Float
+  date             DateTime            @default(now())
+  description      String?
+  autoCalculated   Boolean             @default(false)
+  reference        String?
+  createdAt        DateTime            @default(now())
+
+  @@map("carbon_transactions")
+}
+
+enum EmissionSource {
+  PURCHASE
+  MANUFACTURING
+  EXPENSE
+  FLEET
+  ENERGY
+  WASTE
+  TRAVEL
+  OTHER
+}
+
+model CSRActivity {
+  id           String          @id @default(cuid())
+  title        String
+  description  String
+  categoryId   String?
+  category     Category?       @relation(fields: [categoryId], references: [id])
+  date         DateTime
+  location     String?
+  maxParticipants Int?
+  status       ActivityStatus  @default(UPCOMING)
+  evidenceRequired Boolean     @default(false)
+  points       Int             @default(50)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  participations EmployeeParticipation[]
+
+  @@map("csr_activities")
+}
+
+enum ActivityStatus {
+  UPCOMING
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model EmployeeParticipation {
+  id              String             @id @default(cuid())
+  userId          String
+  user            User               @relation(fields: [userId], references: [id])
+  activityId      String
+  activity        CSRActivity        @relation(fields: [activityId], references: [id])
+  proof           String?
+  approvalStatus  ApprovalStatus     @default(PENDING)
+  pointsEarned    Int                @default(0)
+  completionDate  DateTime?
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@unique([userId, activityId])
+  @@map("employee_participations")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Challenge {
+  id              String          @id @default(cuid())
+  title           String
+  description     String
+  categoryId      String?
+  category        Category?       @relation(fields: [categoryId], references: [id])
+  xp              Int             @default(100)
+  difficulty      Difficulty      @default(MEDIUM)
+  evidenceRequired Boolean        @default(false)
+  deadline        DateTime?
+  status          ChallengeStatus @default(DRAFT)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  participations ChallengeParticipation[]
+
+  @@map("challenges")
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+  EPIC
+}
+
+enum ChallengeStatus {
+  DRAFT
+  ACTIVE
+  UNDER_REVIEW
+  COMPLETED
+  ARCHIVED
+}
+
+model ChallengeParticipation {
+  id             String         @id @default(cuid())
+  challengeId    String
+  challenge      Challenge      @relation(fields: [challengeId], references: [id])
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  progress       Int            @default(0)
+  proof          String?
+  approvalStatus ApprovalStatus @default(PENDING)
+  xpAwarded      Int            @default(0)
+  completedAt    DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([challengeId, userId])
+  @@map("challenge_participations")
+}
+
+model PolicyAcknowledgement {
+  id           String   @id @default(cuid())
+  policyId     String
+  policy       ESGPolicy @relation(fields: [policyId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  acknowledgedAt DateTime @default(now())
+  ipAddress    String?
+
+  @@unique([policyId, userId])
+  @@map("policy_acknowledgements")
+}
+
+model Audit {
+  id           String       @id @default(cuid())
+  title        String
+  description  String?
+  policyId     String?
+  policy       ESGPolicy?   @relation(fields: [policyId], references: [id])
+  conductedById String?
+  conductedBy  User?        @relation(fields: [conductedById], references: [id])
+  auditDate    DateTime
+  score        Float?
+  findings     String?
+  status       AuditStatus  @default(PLANNED)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  complianceIssues ComplianceIssue[]
+
+  @@map("audits")
+}
+
+enum AuditStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ComplianceIssue {
+  id          String          @id @default(cuid())
+  auditId     String?
+  audit       Audit?          @relation(fields: [auditId], references: [id])
+  title       String
+  description String
+  severity    Severity        @default(MEDIUM)
+  ownerId     String?
+  owner       User?           @relation("IssueOwner", fields: [ownerId], references: [id])
+  dueDate     DateTime
+  status      IssueStatus     @default(OPEN)
+  isOverdue   Boolean         @default(false)
+  resolvedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@map("compliance_issues")
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model DepartmentScore {
+  id                 String     @id @default(cuid())
+  departmentId       String
+  department         Department @relation(fields: [departmentId], references: [id])
+  environmentalScore Float      @default(0)
+  socialScore        Float      @default(0)
+  governanceScore    Float      @default(0)
+  totalScore         Float      @default(0)
+  period             String
+  createdAt          DateTime   @default(now())
+
+  @@unique([departmentId, period])
+  @@map("department_scores")
+}
+
+model BadgeAward {
+  id        String   @id @default(cuid())
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  awardedAt DateTime @default(now())
+
+  @@unique([badgeId, userId])
+  @@map("badge_awards")
+}
+
+model RewardRedemption {
+  id           String   @id @default(cuid())
+  rewardId     String
+  reward       Reward   @relation(fields: [rewardId], references: [id])
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  pointsSpent  Int
+  status       RedemptionStatus @default(PENDING)
+  redeemedAt   DateTime @default(now())
+
+  @@map("reward_redemptions")
+}
+
+enum RedemptionStatus {
+  PENDING
+  APPROVED
+  DELIVERED
+  CANCELLED
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id])
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  link      String?
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  COMPLIANCE_ISSUE
+  BADGE_UNLOCKED
+  CSR_APPROVAL
+  CHALLENGE_APPROVAL
+  POLICY_REMINDER
+  REWARD_APPROVED
+  SYSTEM
+}
+
+model AppSettings {
+  id                      String  @id @default(cuid())
+  autoEmissionCalculation Boolean @default(true)
+  evidenceRequired        Boolean @default(false)
+  badgeAutoAward          Boolean @default(true)
+  envWeight               Float   @default(0.4)
+  socialWeight            Float   @default(0.3)
+  govWeight               Float   @default(0.3)
+  emailNotifications      Boolean @default(true)
+  inAppNotifications      Boolean @default(true)
+  notifyComplianceIssue   Boolean @default(true)
+  notifyBadgeUnlock       Boolean @default(true)
+  notifyCsrApproval       Boolean @default(true)
+  notifyPolicyReminder    Boolean @default(true)
+  updatedAt               DateTime @updatedAt
+
+  @@map("app_settings")
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
