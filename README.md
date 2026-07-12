@@ -162,6 +162,35 @@ Client (Next.js + React + Tailwind)
 
 ---
 
+# 🛠 Hackathon Integrations & Features Added
+
+We completed the core workflow loops of the Odoo EcoSphere ESG Management Platform:
+
+### 1. Mock Login & RBAC Simulation
+* **Cookie-Based Sessions:** Formed a dropdown selector at `/` that binds cookies (`user_id`, `user_role`, `user_name`) on login.
+* **Role Mappings:** Seeded profiles are correctly mapped to their roles (e.g. `Alex M.` is MANAGER, `Sarah K.` is MANAGER, `James T.` is EMPLOYEE).
+* **Navigation Sync:** Header navigators read active cookies, display profile stats, and provide a secure **Log Out** button to clean cookies.
+
+### 2. Environmental Module Updates
+* **Goals CRUD Configuration:** Added a form for Managers to create new sustainability goals and inline sliders to log progress. Updates dynamically adjust department ESG scores.
+* **Factors CRUD Configuration:** Added UI forms to add new emission factors and deletion buttons to purge old coefficients.
+* **Recalculation Integration:** Automated emission logging transactions query active coefficients and recalculate department greenhouse output.
+
+### 3. CSR Evidence Upload UX & Lightbox
+* **Visual File Selector:** Employees can click to select a local photo, see an image preview directly in the modal, and upload the evidence (converted to Base64 in DB).
+* **Manager Image Verification:** The participation grid displays a small image thumbnail. Clicking it opens a premium, full-screen **Lightbox Overlay** to inspect the proof on-screen before approving.
+
+### 4. Gamification Approvals Tab
+* **Challenge Review Interface:** Managers see an **Approvals** tab where they review employee challenge proofs and click **Approve** or **Reject** to award points/XP.
+
+### 5. Print-to-PDF Report Exports
+* **HTML Print View:** Resolved the 400 error on PDF generation. Clicking PDF now opens a styled printable layout with live database records, allowing users to save directly as PDF via the browser printer.
+
+### 6. WebGL Digital Twin Globe Optimization
+* **60 FPS Performance:** Reduced `IcosahedronGeometry` detail level from CPU-freezing 64 to 5, and eliminated redundant sphere allocations inside the candidate placement loops.
+
+---
+
 # 🚀 Getting Started
 
 Clone the repository
