@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { Trophy, Zap, Star, Gift, Crown, Swords, Medal, Plus, X } from "lucide-react";
 import ReactConfetti from "react-confetti";
-import { getGamificationData, joinChallenge, submitChallengeProof, redeemReward } from "@/actions/gamification";
+import { getGamificationData, joinChallenge, submitChallengeProof, redeemReward, approveChallengeParticipation } from "@/actions/gamification";
+import { ApprovalStatus } from "@prisma/client";
 
 const DIFFICULTY_STYLES = {
   EASY: "badge-emerald",
@@ -22,7 +23,7 @@ const STATUS_STYLES = {
 };
 
 export default function GamificationPage() {
-  const [activeTab, setActiveTab] = useState<"overview" | "challenges" | "badges" | "rewards" | "leaderboard" | "battles">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "challenges" | "badges" | "rewards" | "leaderboard" | "battles" | "review">("overview");
   const [showConfetti, setShowConfetti] = useState(false);
   
   // Data States
@@ -34,6 +35,7 @@ export default function GamificationPage() {
   const [battles, setBattles] = useState<any[]>([]);
   const [stats, setStats] = useState({ activeChallenges: 12, totalXpAwarded: "48.2K", badgesUnlocked: 234, rewardsRedeemed: 87 });
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [participations, setParticipations] = useState<any[]>([]);
 
   // Dialog State
   const [proofModalOpen, setProofModalOpen] = useState(false);
@@ -50,6 +52,7 @@ export default function GamificationPage() {
       setRewards(res.rewards);
       setLeaderboard(res.leaderboard);
       setBattles(res.battles);
+      setParticipations(res.participations || []);
       setStats({
         activeChallenges: res.stats.activeChallenges,
         totalXpAwarded: res.stats.totalXpAwarded.toLocaleString(),
@@ -96,6 +99,15 @@ export default function GamificationPage() {
       await submitChallengeProof(selectedPartId, proofText);
       setProofModalOpen(false);
       setProofText("");
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleApproveChallenge = async (id: string, status: ApprovalStatus) => {
+    try {
+      await approveChallengeParticipation(id, status);
       loadData();
     } catch (e) {
       console.error(e);
@@ -154,12 +166,15 @@ export default function GamificationPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 p-1 rounded-xl w-fit flex-wrap" style={{ background: "rgba(255,255,255,0.04)" }}>
-        {(["overview", "challenges", "badges", "rewards", "leaderboard", "battles"] as const).map((tab) => (
-          <button key={tab} onClick={() => setActiveTab(tab)}
-            className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all ${activeTab === tab ? "bg-amber-500 text-white" : "text-muted hover:text-slate-300"}`}>
-            {tab === "battles" ? "⚔️ Battles" : tab}
-          </button>
-        ))}
+        {(["overview", "challenges", "badges", "rewards", "leaderboard", "battles", "review"] as const).map((tab) => {
+          if (tab === "review" && currentUser?.role === "EMPLOYEE") return null;
+          return (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              className={`px-3 py-2 rounded-lg text-xs font-medium capitalize transition-all ${activeTab === tab ? "bg-amber-500 text-white" : "text-muted hover:text-slate-300"}`}>
+              {tab === "battles" ? "⚔️ Battles" : tab === "review" ? "⭐ Approvals" : tab}
+            </button>
+          );
+        })}
       </div>
 
       {/* Challenges */}
@@ -384,6 +399,60 @@ export default function GamificationPage() {
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* Approvals Tab */}
+      {activeTab === "review" && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden">
+          <div className="p-5 border-b border-white/5">
+            <h3 className="font-orbitron text-sm font-semibold text-slate-200">Challenge Completion Approvals</h3>
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Employee</th><th>Challenge</th><th>Status</th><th>XP</th><th>Date</th><th>Proof Link</th><th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participations.map((p, i) => (
+                <tr key={i}>
+                  <td className="font-medium text-slate-200">{p.name}</td>
+                  <td className="text-muted text-xs">{p.challenge}</td>
+                  <td>
+                    <span className={`text-xs capitalize ${p.status === "approved" ? "text-emerald-400" : p.status === "pending" ? "text-amber-400" : "text-rose-400"}`}>
+                      {p.status}
+                    </span>
+                  </td>
+                  <td><span className="font-orbitron text-xs text-amber-400">+{p.xp} XP</span></td>
+                  <td className="text-muted text-xs">{p.date}</td>
+                  <td className="text-muted text-xs truncate max-w-[150px]">
+                    {p.proof ? (
+                      <span className="text-cyan-400 underline cursor-pointer">{p.proof}</span>
+                    ) : "No proof uploaded"}
+                  </td>
+                  <td>
+                    {p.status === "pending" && (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleApproveChallenge(p.id, ApprovalStatus.APPROVED)}
+                          className="text-[10px] badge-emerald px-2 py-0.5 rounded-full"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => handleApproveChallenge(p.id, ApprovalStatus.REJECTED)}
+                          className="text-[10px] badge-rose px-2 py-0.5 rounded-full"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </motion.div>
       )}
 
       {/* Submit Proof Modal */}

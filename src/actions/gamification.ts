@@ -2,10 +2,17 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { ApprovalStatus, ChallengeStatus, RedemptionStatus, Status, NotificationType } from "@prisma/client";
 import { checkBadgeAutoAward, calculateDepartmentScores } from "@/lib/esgEngine";
 
 export async function getGamificationData(userId?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+
   const challenges = await prisma.challenge.findMany({
     orderBy: { createdAt: "desc" },
     include: { category: true, participations: true },
@@ -30,7 +37,7 @@ export async function getGamificationData(userId?: string) {
 
   // Map challenges
   const mappedChallenges = challenges.map(c => {
-    const userPart = userId ? c.participations.find(p => p.userId === userId) : null;
+    const userPart = finalUserId ? c.participations.find(p => p.userId === finalUserId) : null;
     return {
       id: c.id,
       title: c.title,
@@ -49,8 +56,8 @@ export async function getGamificationData(userId?: string) {
 
   // Map badges
   const userBadgeIds = new Set(
-    userId 
-      ? (await prisma.badgeAward.findMany({ where: { userId } })).map(a => a.badgeId) 
+    finalUserId 
+      ? (await prisma.badgeAward.findMany({ where: { userId: finalUserId } })).map(a => a.badgeId) 
       : []
   );
 
@@ -105,7 +112,21 @@ export async function getGamificationData(userId?: string) {
     });
   });
 
+  const participations = await prisma.challengeParticipation.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { user: true, challenge: true },
+  });
+
   return {
+    participations: participations.map(p => ({
+      id: p.id,
+      name: p.user.name || p.user.email,
+      challenge: p.challenge.title,
+      status: p.approvalStatus.toLowerCase(),
+      proof: p.proof,
+      xp: p.challenge.xp,
+      date: p.completedAt ? new Date(p.completedAt).toLocaleDateString() : new Date(p.createdAt).toLocaleDateString(),
+    })),
     challenges: mappedChallenges,
     badges: mappedBadges,
     rewards: rewards.map(r => ({
@@ -138,13 +159,20 @@ export async function getGamificationData(userId?: string) {
   };
 }
 
-export async function joinChallenge(challengeId: string, userId: string) {
+export async function joinChallenge(challengeId: string, userId?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+  if (!finalUserId) throw new Error("Not logged in");
+
   const challenge = await prisma.challenge.findUnique({ where: { id: challengeId } });
   if (!challenge) throw new Error("Challenge not found");
 
   const participation = await prisma.challengeParticipation.create({
     data: {
-      userId,
+      userId: finalUserId,
       challengeId,
       progress: 0,
       approvalStatus: ApprovalStatus.PENDING,
@@ -224,8 +252,15 @@ export async function approveChallengeParticipation(participationId: string, sta
   return updated;
 }
 
-export async function redeemReward(rewardId: string, userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+export async function redeemReward(rewardId: string, userId?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+  if (!finalUserId) throw new Error("Not logged in");
+
+  const user = await prisma.user.findUnique({ where: { id: finalUserId } });
   const reward = await prisma.reward.findUnique({ where: { id: rewardId } });
 
   if (!user || !reward) throw new Error("User or Reward not found");
@@ -237,13 +272,13 @@ export async function redeemReward(rewardId: string, userId: string) {
     prisma.rewardRedemption.create({
       data: {
         rewardId,
-        userId,
+        userId: finalUserId,
         pointsSpent: reward.pointsRequired,
         status: RedemptionStatus.APPROVED, // Auto approve for demo
       },
     }),
     prisma.user.update({
-      where: { id: userId },
+      where: { id: finalUserId },
       data: { points: { decrement: reward.pointsRequired } },
     }),
     prisma.reward.update({
@@ -255,7 +290,7 @@ export async function redeemReward(rewardId: string, userId: string) {
   // Send Notification
   await prisma.notification.create({
     data: {
-      userId,
+      userId: finalUserId,
       type: NotificationType.REWARD_APPROVED,
       title: "Reward Redeemed! 🎁",
       message: `You successfully redeemed '${reward.name}' for ${reward.pointsRequired} points.`,
