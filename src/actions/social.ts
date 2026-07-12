@@ -2,10 +2,21 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { ApprovalStatus, ActivityStatus, NotificationType, CategoryType } from "@prisma/client";
 import { checkBadgeAutoAward, calculateDepartmentScores } from "@/lib/esgEngine";
 
 export async function getCSRData() {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get("user_id")?.value;
+
+  const currentUser = userId
+    ? await prisma.user.findUnique({
+        where: { id: userId },
+        include: { employeeParticipation: true },
+      })
+    : null;
+
   const activities = await prisma.cSRActivity.findMany({
     orderBy: { date: "asc" },
     include: { category: true },
@@ -44,22 +55,38 @@ export async function getCSRData() {
   });
 
   return {
-    activities: activities.map(a => ({
-      id: a.id,
-      title: a.title,
-      category: a.category?.name || "Community",
-      date: new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      participants: a.maxParticipants ? Math.round(a.maxParticipants * 0.7) : 10, // Mock current counts if none
-      max: a.maxParticipants || 50,
-      status: a.status.toLowerCase(),
-      points: a.points,
-    })),
+    currentUser: currentUser ? {
+      id: currentUser.id,
+      name: currentUser.name,
+      role: currentUser.role,
+      points: currentUser.points,
+      xp: currentUser.xp,
+    } : null,
+    activities: activities.map(a => {
+      const userPart = currentUser?.employeeParticipation.find(p => p.activityId === a.id);
+      return {
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        category: a.category?.name || "Community",
+        date: new Date(a.date).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        participants: a.maxParticipants ? Math.round(a.maxParticipants * 0.7) : 10, // Mock current counts if none
+        max: a.maxParticipants || 50,
+        status: a.status.toLowerCase(),
+        points: a.points,
+        joined: !!userPart,
+        participationId: userPart?.id,
+        approvalStatus: userPart?.approvalStatus.toLowerCase(),
+        hasProof: !!userPart?.proof,
+      };
+    }),
     participations: participations.map(p => ({
       id: p.id,
       name: p.user.name || p.user.email,
       activity: p.activity.title,
       status: p.approvalStatus.toLowerCase(),
       points: p.pointsEarned,
+      proof: p.proof,
       date: new Date(p.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
     })),
     engagementData: engagementData.length > 0 ? engagementData : [
@@ -112,13 +139,20 @@ export async function createCSRActivity(data: {
   return activity;
 }
 
-export async function registerForCSRActivity(activityId: string, userId: string) {
+export async function registerForCSRActivity(activityId: string, userId?: string) {
+  let finalUserId = userId;
+  if (!finalUserId) {
+    const cookieStore = await cookies();
+    finalUserId = cookieStore.get("user_id")?.value;
+  }
+  if (!finalUserId) throw new Error("Not logged in");
+
   const activity = await prisma.cSRActivity.findUnique({ where: { id: activityId } });
   if (!activity) throw new Error("Activity not found");
 
   const participation = await prisma.employeeParticipation.create({
     data: {
-      userId,
+      userId: finalUserId,
       activityId,
       approvalStatus: ApprovalStatus.PENDING,
       pointsEarned: 0,

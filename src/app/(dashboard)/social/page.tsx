@@ -3,8 +3,8 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState, useEffect } from "react";
 import { RadialBarChart, RadialBar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
-import { Users, Heart, Star, Plus, CheckCircle, Clock, XCircle, X } from "lucide-react";
-import { getCSRData, createCSRActivity, approveCSRParticipation } from "@/actions/social";
+import { Users, Heart, Star, Plus, CheckCircle, Clock, XCircle, X, Upload, Camera, Image as ImageIcon } from "lucide-react";
+import { getCSRData, createCSRActivity, approveCSRParticipation, registerForCSRActivity, submitCSRProof } from "@/actions/social";
 import { getEmissionFactors } from "@/actions/environmental";
 import { ApprovalStatus } from "@prisma/client";
 
@@ -31,6 +31,7 @@ export default function SocialPage() {
   const [engagementData, setEngagementData] = useState<any[]>([]);
   const [stats, setStats] = useState({ totalActivities: 28, activeParticipants: 487, avgEngagementRate: "79%", pointsAwarded: "14.2K" });
   const [categories, setCategories] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -43,6 +44,14 @@ export default function SocialPage() {
   const [newPoints, setNewPoints] = useState<number>(100);
   const [newEvidence, setNewEvidence] = useState(false);
 
+  // Proof Modal State
+  const [proofModalOpen, setProofModalOpen] = useState(false);
+  const [selectedPartId, setSelectedPartId] = useState("");
+  const [proofText, setProofText] = useState("");
+  const [proofType, setProofType] = useState<"file" | "link">("file");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -51,6 +60,7 @@ export default function SocialPage() {
       // Get categories
       setCategories(res.categories || []);
 
+      setCurrentUser(res.currentUser);
       setActivities(res.activities);
       setParticipations(res.participations);
       setEngagementData(res.engagementData);
@@ -96,6 +106,42 @@ export default function SocialPage() {
     }
   };
 
+  const handleJoin = async (activityId: string) => {
+    try {
+      await registerForCSRActivity(activityId);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSubmitProof = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPartId) return;
+    try {
+      await submitCSRProof(selectedPartId, proofText);
+      setProofModalOpen(false);
+      setProofText("");
+      setPreviewUrl(null);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setProofText(base64String);
+        setPreviewUrl(base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleApprove = async (id: string, status: ApprovalStatus) => {
     try {
       await approveCSRParticipation(id, status);
@@ -125,12 +171,27 @@ export default function SocialPage() {
           </h1>
           <p className="text-sm text-muted mt-1">CSR activities, employee participation & diversity metrics</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="btn-cyan px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
-        >
-          <Plus size={15} /> New CSR Activity
-        </button>
+        {currentUser && currentUser.role === "EMPLOYEE" ? (
+          <div className="flex items-center gap-4 bg-[#0a1220] border border-white/10 px-4 py-2 rounded-xl">
+            <div>
+              <p className="text-[10px] text-muted uppercase tracking-wider">My Points Balance</p>
+              <p className="font-orbitron text-sm font-bold text-amber-400">{currentUser.points} pts</p>
+            </div>
+            <div className="border-l border-white/10 pl-4">
+              <p className="text-[10px] text-muted uppercase tracking-wider">My XP</p>
+              <p className="font-orbitron text-sm font-bold text-purple-400">{currentUser.xp} XP</p>
+            </div>
+          </div>
+        ) : (
+          (!currentUser || currentUser.role === "MANAGER" || currentUser.role === "ADMIN") && (
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="btn-cyan px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
+            >
+              <Plus size={15} /> New CSR Activity
+            </button>
+          )
+        )}
       </div>
 
       {/* Stats */}
@@ -219,11 +280,40 @@ export default function SocialPage() {
                   <span className="text-muted">Participants</span>
                   <span className="text-slate-300">{a.participants}/{a.max}</span>
                 </div>
-                <div className="w-full bg-white/5 rounded-full h-1.5">
+                <div className="w-full bg-white/5 rounded-full h-1.5 mb-3">
                   <motion.div className="h-1.5 rounded-full bg-cyan-400" initial={{ width: 0 }}
                     animate={{ width: `${(a.participants / a.max) * 100}%` }} transition={{ duration: 1, delay: i * 0.1 }} />
                 </div>
               </div>
+
+              {currentUser && currentUser.role === "EMPLOYEE" && (
+                <div className="mt-4 pt-4 border-t border-white/5">
+                  {!a.joined ? (
+                    <button
+                      onClick={() => handleJoin(a.id)}
+                      className="w-full py-1.5 rounded-lg text-xs font-semibold border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/10 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Plus size={13} />
+                      <span>Join Activity</span>
+                    </button>
+                  ) : !a.hasProof ? (
+                    <button
+                      onClick={() => { setSelectedPartId(a.participationId); setProofModalOpen(true); }}
+                      className="w-full py-1.5 rounded-lg text-xs font-semibold bg-gradient-to-r from-cyan-500 to-emerald-500 text-white hover:opacity-90 shadow-md transition-all"
+                    >
+                      Submit Proof (Upload Pic)
+                    </button>
+                  ) : a.approvalStatus === "approved" ? (
+                    <div className="w-full py-1.5 rounded-lg text-xs font-semibold text-center bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      Completed & Verified ✓ (+{a.points} pts)
+                    </div>
+                  ) : (
+                    <div className="w-full py-1.5 rounded-lg text-xs font-semibold text-center bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      Pending Verification...
+                    </div>
+                  )}
+                </div>
+              )}
             </motion.div>
           ))}
         </motion.div>
@@ -235,7 +325,7 @@ export default function SocialPage() {
             <h3 className="font-orbitron text-sm font-semibold text-slate-200">Employee Participation</h3>
           </div>
           <table className="data-table">
-            <thead><tr><th>Employee</th><th>Activity</th><th>Status</th><th>Points</th><th>Date</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Employee</th><th>Activity</th><th>Status</th><th>Points</th><th>Date</th><th>Evidence</th><th>Actions</th></tr></thead>
             <tbody>
               {participations.map((p, i) => (
                 <tr key={i}>
@@ -249,6 +339,36 @@ export default function SocialPage() {
                   </td>
                   <td><span className="font-orbitron text-xs text-amber-400">{p.points > 0 ? `+${p.points}` : "—"}</span></td>
                   <td className="text-muted text-xs">{p.date}</td>
+                  <td>
+                    {p.proof ? (
+                      p.proof.startsWith("data:image/") ? (
+                        <div 
+                          onClick={() => setLightboxUrl(p.proof)}
+                          className="w-10 h-10 rounded border border-white/10 overflow-hidden cursor-pointer hover:border-cyan-400/50 transition-all flex items-center justify-center bg-black/40"
+                        >
+                          <img src={p.proof} alt="Proof thumbnail" className="w-full h-full object-cover" />
+                        </div>
+                      ) : p.proof.startsWith("http") ? (
+                        <div className="flex flex-col gap-1">
+                          <a href={p.proof} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline block text-[10px]">
+                            External Link
+                          </a>
+                          {(p.proof.match(/\.(jpeg|jpg|gif|png|webp)/i) || p.proof.includes("imgur") || p.proof.includes("files.ecosphere")) && (
+                            <div 
+                              onClick={() => setLightboxUrl(p.proof)}
+                              className="w-10 h-10 rounded border border-white/10 overflow-hidden cursor-pointer hover:border-cyan-400/50 transition-all flex items-center justify-center bg-black/40 mt-1"
+                            >
+                              <img src={p.proof} alt="Proof thumbnail" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 font-mono text-[10px] truncate max-w-[120px] block" title={p.proof}>{p.proof}</span>
+                      )
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                   <td>
                     {p.status === "pending" && (
                       <div className="flex gap-2">
@@ -425,6 +545,154 @@ export default function SocialPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Proof Submission Modal */}
+      <AnimatePresence>
+        {proofModalOpen && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 z-50">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md glass-card p-6 border border-white/10 relative"
+            >
+              <button 
+                onClick={() => { setProofModalOpen(false); setPreviewUrl(null); }}
+                className="absolute top-4 right-4 text-muted hover:text-white"
+              >
+                <X size={18} />
+              </button>
+              
+              <h3 className="font-orbitron text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
+                <Heart size={16} className="text-cyan-400" />
+                Submit CSR Evidence (Proof)
+              </h3>
+
+              {/* Toggle proof type */}
+              <div className="grid grid-cols-2 gap-2 mb-4 p-1 bg-white/5 border border-white/10 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => { setProofType("file"); setProofText(""); setPreviewUrl(null); }}
+                  className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${proofType === "file" ? "bg-cyan-500 text-white" : "text-muted hover:text-slate-300"}`}
+                >
+                  <Camera size={13} />
+                  Upload Photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setProofType("link"); setProofText(""); setPreviewUrl(null); }}
+                  className={`py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${proofType === "link" ? "bg-cyan-500 text-white" : "text-muted hover:text-slate-300"}`}
+                >
+                  <ImageIcon size={13} />
+                  Paste Link
+                </button>
+              </div>
+              
+              <form onSubmit={handleSubmitProof} className="space-y-4">
+                {proofType === "file" ? (
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 block mb-1.5">
+                      Select Plantation Photo / Document
+                    </label>
+                    {!previewUrl ? (
+                      <label className="border-2 border-dashed border-white/10 hover:border-cyan-500/50 bg-white/5 hover:bg-white/10 transition-all rounded-xl p-8 flex flex-col items-center justify-center gap-2 cursor-pointer">
+                        <Upload size={24} className="text-cyan-400" />
+                        <span className="text-xs font-medium text-slate-300">Click to upload photo</span>
+                        <span className="text-[10px] text-muted">Supports PNG, JPG, JPEG</span>
+                        <input
+                          type="file"
+                          required
+                          accept="image/*"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                      </label>
+                    ) : (
+                      <div className="relative rounded-xl border border-white/10 overflow-hidden bg-black/40 p-2 flex flex-col items-center">
+                        <img 
+                          src={previewUrl} 
+                          alt="Plantation Proof Preview" 
+                          className="max-h-48 object-contain rounded-lg shadow-md"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { setPreviewUrl(null); setProofText(""); }}
+                          className="absolute top-4 right-4 p-1.5 rounded-full bg-rose-500 text-white shadow-lg hover:bg-rose-600 transition-all"
+                        >
+                          <X size={14} />
+                        </button>
+                        <span className="text-[10px] text-emerald-400 mt-2 flex items-center gap-1">
+                          <CheckCircle size={10} /> Photo attached successfully
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[10px] font-semibold text-slate-400 block mb-1">
+                      Link / URL Reference
+                    </label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="e.g. https://files.ecosphere.org/proof/tree-planting.jpg"
+                      value={proofText}
+                      onChange={(e) => setProofText(e.target.value)}
+                      className="input-field w-full text-xs"
+                    />
+                  </div>
+                )}
+                
+                <div className="pt-2 flex justify-end gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => { setProofModalOpen(false); setPreviewUrl(null); }}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 border border-white/10 hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-cyan px-4 py-2 rounded-xl text-xs font-semibold"
+                  >
+                    Submit Proof
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Lightbox Image Preview Modal */}
+      <AnimatePresence>
+        {lightboxUrl && (
+          <div 
+            onClick={() => setLightboxUrl(null)}
+            className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 z-50 cursor-pointer"
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="relative max-w-4xl max-h-[85vh] overflow-hidden rounded-2xl border border-white/10"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setLightboxUrl(null)}
+                className="absolute top-4 right-4 p-2 rounded-full bg-black/60 text-white hover:bg-black/80 transition-all border border-white/10"
+              >
+                <X size={18} />
+              </button>
+              <img 
+                src={lightboxUrl} 
+                alt="CSR Evidence Full Resolution" 
+                className="max-w-full max-h-[80vh] object-contain"
+              />
             </motion.div>
           </div>
         )}
