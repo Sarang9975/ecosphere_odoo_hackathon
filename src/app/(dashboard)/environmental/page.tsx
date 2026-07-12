@@ -1,7 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -13,44 +13,102 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from "recharts";
-import { Leaf, Plus, Target, TrendingDown, Flame } from "lucide-react";
-
-const emissionsBySource = [
-  { name: "Fleet", value: 35, color: "#f43f5e" },
-  { name: "Manufacturing", value: 28, color: "#f59e0b" },
-  { name: "Energy", value: 20, color: "#8b5cf6" },
-  { name: "Purchases", value: 12, color: "#06b6d4" },
-  { name: "Other", value: 5, color: "#10b981" },
-];
-
-const monthlyData = [
-  { month: "Jan", scope1: 180, scope2: 120, scope3: 200 },
-  { month: "Feb", scope1: 160, scope2: 115, scope3: 185 },
-  { month: "Mar", scope1: 140, scope2: 108, scope3: 170 },
-  { month: "Apr", scope1: 155, scope2: 100, scope3: 160 },
-  { month: "May", scope1: 130, scope2: 95, scope3: 150 },
-  { month: "Jun", scope1: 120, scope2: 88, scope3: 142 },
-  { month: "Jul", scope1: 110, scope2: 82, scope3: 135 },
-];
-
-const goals = [
-  { title: "Reduce Fleet Emissions", current: 65, target: 100, unit: "tCO₂e saved", deadline: "Dec 2026", status: "on_track" },
-  { title: "100% Renewable Energy", current: 42, target: 100, unit: "% renewable", deadline: "Mar 2027", status: "at_risk" },
-  { title: "Zero Waste Manufacturing", current: 78, target: 100, unit: "% waste diverted", deadline: "Sep 2026", status: "on_track" },
-];
-
-const transactions = [
-  { id: 1, source: "Fleet", dept: "Operations", co2: "24.5 tCO₂e", date: "Jul 10", auto: true },
-  { id: 2, source: "Manufacturing", dept: "Production", co2: "18.2 tCO₂e", date: "Jul 9", auto: true },
-  { id: 3, source: "Energy", dept: "HQ", co2: "12.8 tCO₂e", date: "Jul 8", auto: false },
-  { id: 4, source: "Travel", dept: "Sales", co2: "6.4 tCO₂e", date: "Jul 7", auto: false },
-  { id: 5, source: "Purchase", dept: "Procurement", co2: "4.1 tCO₂e", date: "Jul 6", auto: true },
-];
+import { Leaf, Plus, Target, TrendingDown, Flame, X } from "lucide-react";
+import { getEmissionsData, logEmissionTransaction, getEnvironmentalGoals, addEnvironmentalGoal, getEmissionFactors } from "@/actions/environmental";
+import { EmissionSource } from "@prisma/client";
 
 export default function EnvironmentalPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "transactions" | "goals" | "factors">("overview");
+  
+  // States for DB data
+  const [loading, setLoading] = useState(true);
+  const [emissionsBySource, setEmissionsBySource] = useState<any[]>([]);
+  const [monthlyData, setMonthlyData] = useState<any[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [factors, setFactors] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalEmissions: 2340, reduction: "-12%", goalsCount: "2 of 3", factorsCount: 5 });
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newSource, setNewSource] = useState<EmissionSource>(EmissionSource.FLEET);
+  const [newQuantity, setNewQuantity] = useState<number>(0);
+  const [newUnit, setNewUnit] = useState<string>("L");
+  const [newFactorId, setNewFactorId] = useState<string>("");
+  const [newDescription, setNewDescription] = useState<string>("");
+  const [newCo2, setNewCo2] = useState<number>(0);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const res = await getEmissionsData();
+      const dbGoals = await getEnvironmentalGoals();
+      const dbFactors = await getEmissionFactors();
+
+      setTransactions(res.transactions);
+      setEmissionsBySource(res.emissionsBySource);
+      setMonthlyData(res.monthlyData);
+      setFactors(dbFactors);
+
+      setGoals(dbGoals.map(g => ({
+        title: g.title,
+        current: g.currentValue,
+        target: g.targetValue,
+        unit: g.unit,
+        deadline: g.deadline ? new Date(g.deadline).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "No deadline",
+        status: g.status === "ACHIEVED" ? "on_track" : g.status === "AT_RISK" ? "at_risk" : "on_track",
+      })));
+
+      setStats({
+        totalEmissions: res.totalEmissions,
+        reduction: "-12%",
+        goalsCount: `${dbGoals.filter(g => g.status === "ACHIEVED" || g.status === "IN_PROGRESS").length} of ${dbGoals.length}`,
+        factorsCount: dbFactors.length,
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleLogEmission = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await logEmissionTransaction({
+        source: newSource,
+        quantity: Number(newQuantity),
+        unit: newUnit,
+        emissionFactorId: newFactorId || undefined,
+        description: newDescription,
+        co2eKg: newFactorId ? undefined : newCo2 * 1000.0, // if no factor selected, use manual co2 in kg
+      });
+      setIsModalOpen(false);
+      // Reset
+      setNewQuantity(0);
+      setNewDescription("");
+      setNewCo2(0);
+      loadData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  if (loading && transactions.length === 0) {
+    return (
+      <div className="w-full h-96 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-2 animate-bounce">🌱</div>
+          <p className="font-orbitron text-xs text-emerald-400">Loading Environmental details...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -60,7 +118,10 @@ export default function EnvironmentalPage() {
           <h1 className="font-orbitron text-2xl font-bold gradient-text-emerald">🌱 Environmental</h1>
           <p className="text-sm text-muted mt-1">Carbon accounting, emission tracking & sustainability goals</p>
         </div>
-        <button className="btn-emerald px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="btn-emerald px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
+        >
           <Plus size={15} />
           Log Emission
         </button>
@@ -69,10 +130,10 @@ export default function EnvironmentalPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Emissions", value: "2,340", unit: "tCO₂e", icon: <Flame size={16} className="text-rose-400" />, color: "rgba(244,63,94,0.12)", border: "rgba(244,63,94,0.2)" },
-          { label: "vs Last Quarter", value: "-12%", unit: "reduction", icon: <TrendingDown size={16} className="text-emerald-400" />, color: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.15)" },
-          { label: "Goals On Track", value: "2", unit: "of 3", icon: <Target size={16} className="text-cyan-400" />, color: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
-          { label: "Emission Factors", value: "24", unit: "configured", icon: <Leaf size={16} className="text-amber-400" />, color: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
+          { label: "Total Emissions", value: stats.totalEmissions.toLocaleString(), unit: "tCO₂e", icon: <Flame size={16} className="text-rose-400" />, color: "rgba(244,63,94,0.12)", border: "rgba(244,63,94,0.2)" },
+          { label: "vs Last Quarter", value: stats.reduction, unit: "reduction", icon: <TrendingDown size={16} className="text-emerald-400" />, color: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.15)" },
+          { label: "Goals On Track", value: stats.goalsCount, unit: "goals", icon: <Target size={16} className="text-cyan-400" />, color: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
+          { label: "Emission Factors", value: String(stats.factorsCount), unit: "configured", icon: <Leaf size={16} className="text-amber-400" />, color: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
         ].map((s, i) => (
           <motion.div
             key={i}
@@ -160,7 +221,10 @@ export default function EnvironmentalPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden">
           <div className="p-5 border-b border-white/5 flex items-center justify-between">
             <h3 className="font-orbitron text-sm font-semibold text-slate-200">Carbon Transactions</h3>
-            <button className="btn-emerald px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5">
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="btn-emerald px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5"
+            >
               <Plus size={12} /> Add Transaction
             </button>
           </div>
@@ -208,18 +272,17 @@ export default function EnvironmentalPage() {
                     className="h-2.5 rounded-full"
                     style={{ background: goal.status === "on_track" ? "linear-gradient(90deg, #10b981, #06b6d4)" : "linear-gradient(90deg, #f59e0b, #f43f5e)" }}
                     initial={{ width: 0 }}
-                    animate={{ width: `${goal.current}%` }}
+                    animate={{ width: `${Math.min(100, (goal.current / goal.target) * 100)}%` }}
                     transition={{ duration: 1.2, ease: "easeOut", delay: i * 0.1 }}
                   />
                 </div>
-                <span className="text-xs font-orbitron font-bold text-slate-200 w-10 text-right">{goal.current}%</span>
+                <span className="text-xs font-orbitron font-bold text-slate-200 w-10 text-right">
+                  {Math.round(Math.min(100, (goal.current / goal.target) * 100))}%
+                </span>
               </div>
               <p className="text-xs text-muted">{goal.current} / {goal.target} {goal.unit}</p>
             </div>
           ))}
-          <button className="btn-emerald px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 w-fit">
-            <Plus size={15} /> Add Goal
-          </button>
         </motion.div>
       )}
 
@@ -227,29 +290,154 @@ export default function EnvironmentalPage() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="glass-card overflow-hidden">
           <div className="p-5 border-b border-white/5 flex items-center justify-between">
             <h3 className="font-orbitron text-sm font-semibold text-slate-200">Emission Factors</h3>
-            <button className="btn-emerald px-3 py-1.5 rounded-lg text-xs font-medium">+ Add Factor</button>
           </div>
           <table className="data-table">
             <thead><tr><th>Name</th><th>Category</th><th>Factor</th><th>Unit</th><th>Source</th></tr></thead>
             <tbody>
-              {[
-                { name: "Diesel Fuel", cat: "Fleet", factor: "2.68", unit: "kgCO₂e/L", src: "GHG Protocol" },
-                { name: "Electricity (Grid)", cat: "Energy", factor: "0.82", unit: "kgCO₂e/kWh", src: "IEA 2024" },
-                { name: "Air Travel (short)", cat: "Travel", factor: "0.255", unit: "kgCO₂e/km", src: "DEFRA" },
-                { name: "Natural Gas", cat: "Energy", factor: "2.04", unit: "kgCO₂e/m³", src: "IPCC" },
-              ].map((f, i) => (
+              {factors.map((f, i) => (
                 <tr key={i}>
                   <td className="font-medium text-slate-200">{f.name}</td>
-                  <td><span className="badge-cyan text-xs px-2 py-0.5 rounded-full">{f.cat}</span></td>
+                  <td><span className="badge-cyan text-xs px-2 py-0.5 rounded-full">{f.category}</span></td>
                   <td className="font-orbitron text-emerald-400 text-xs">{f.factor}</td>
                   <td className="text-muted text-xs">{f.unit}</td>
-                  <td className="text-muted text-xs">{f.src}</td>
+                  <td className="text-muted text-xs">{f.source}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </motion.div>
       )}
+
+      {/* Log Emission Dialog Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg glass-card border border-white/10 p-6 relative overflow-hidden"
+            >
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-2 mb-4">
+                <Leaf className="text-emerald-400" size={18} />
+                <h3 className="font-orbitron text-base font-semibold text-slate-200">Log Emission Transaction</h3>
+              </div>
+
+              <form onSubmit={handleLogEmission} className="space-y-4">
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Emission Source</label>
+                  <select 
+                    value={newSource} 
+                    onChange={(e) => setNewSource(e.target.value as EmissionSource)}
+                    className="input-field text-xs w-full bg-[#0a101d]"
+                  >
+                    <option value={EmissionSource.FLEET}>Fleet</option>
+                    <option value={EmissionSource.ENERGY}>Energy</option>
+                    <option value={EmissionSource.MANUFACTURING}>Manufacturing</option>
+                    <option value={EmissionSource.EXPENSE}>Expense</option>
+                    <option value={EmissionSource.PURCHASE}>Purchase</option>
+                    <option value={EmissionSource.WASTE}>Waste</option>
+                    <option value={EmissionSource.TRAVEL}>Travel</option>
+                    <option value={EmissionSource.OTHER}>Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Emission Factor (Optional - Auto calculates CO2e)</label>
+                  <select 
+                    value={newFactorId} 
+                    onChange={(e) => {
+                      setNewFactorId(e.target.value);
+                      const fact = factors.find(f => f.id === e.target.value);
+                      if (fact) setNewUnit(fact.unit.split("/")[1] || "unit");
+                    }}
+                    className="input-field text-xs w-full bg-[#0a101d]"
+                  >
+                    <option value="">Manual Entry (No Factor)</option>
+                    {factors.map(f => (
+                      <option key={f.id} value={f.id}>{f.name} ({f.factor} {f.unit})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Quantity</label>
+                    <input 
+                      type="number" 
+                      required 
+                      value={newQuantity || ""} 
+                      onChange={(e) => setNewQuantity(Number(e.target.value))}
+                      placeholder="e.g. 150"
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Unit</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newUnit} 
+                      onChange={(e) => setNewUnit(e.target.value)}
+                      placeholder="e.g. L or kWh"
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                </div>
+
+                {!newFactorId && (
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Manual CO2e (tons)</label>
+                    <input 
+                      type="number" 
+                      step="any"
+                      required
+                      value={newCo2 || ""} 
+                      onChange={(e) => setNewCo2(Number(e.target.value))}
+                      placeholder="e.g. 2.4"
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Description / Reference</label>
+                  <input 
+                    type="text" 
+                    value={newDescription} 
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    placeholder="e.g. Fleet Diesel refuel"
+                    className="input-field text-xs w-full"
+                  />
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 border border-white/10 hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-emerald px-4 py-2 rounded-xl text-xs font-semibold"
+                  >
+                    Log Emission
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
