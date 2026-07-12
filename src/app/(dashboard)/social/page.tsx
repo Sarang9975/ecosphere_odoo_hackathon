@@ -1,39 +1,18 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useState, useEffect } from "react";
 import { RadialBarChart, RadialBar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from "recharts";
-import { Users, Heart, Star, Plus, CheckCircle, Clock, XCircle } from "lucide-react";
+import { Users, Heart, Star, Plus, CheckCircle, Clock, XCircle, X } from "lucide-react";
+import { getCSRData, createCSRActivity, approveCSRParticipation } from "@/actions/social";
+import { getEmissionFactors } from "@/actions/environmental";
+import { ApprovalStatus } from "@prisma/client";
 
 const diversityData = [
   { name: "Gender Parity", value: 48, fill: "#10b981" },
   { name: "Ethnic Diversity", value: 63, fill: "#06b6d4" },
   { name: "Disability Inclusion", value: 8, fill: "#8b5cf6" },
   { name: "Age Diversity", value: 72, fill: "#f59e0b" },
-];
-
-const csrActivities = [
-  { id: 1, title: "Tree Planting Drive", category: "Environment", date: "Jul 15", participants: 45, max: 60, status: "upcoming", points: 100 },
-  { id: 2, title: "Community Clean-Up", category: "Community", date: "Jul 8", participants: 32, max: 32, status: "completed", points: 75 },
-  { id: 3, title: "Blood Donation Camp", category: "Health", date: "Jul 20", participants: 18, max: 40, status: "upcoming", points: 150 },
-  { id: 4, title: "Digital Literacy Workshop", category: "Education", date: "Jun 28", participants: 20, max: 25, status: "completed", points: 80 },
-  { id: 5, title: "Mangrove Restoration", category: "Environment", date: "Aug 5", participants: 8, max: 50, status: "upcoming", points: 200 },
-];
-
-const engagementData = [
-  { dept: "Engineering", rate: 87 },
-  { dept: "HR", rate: 92 },
-  { dept: "Marketing", rate: 78 },
-  { dept: "Finance", rate: 65 },
-  { dept: "Operations", rate: 71 },
-];
-
-const participations = [
-  { name: "Sarah K.", activity: "Tree Planting Drive", status: "approved", points: 100, date: "Jul 15" },
-  { name: "Alex M.", activity: "Blood Donation Camp", status: "pending", points: 0, date: "Jul 20" },
-  { name: "Priya R.", activity: "Community Clean-Up", status: "approved", points: 75, date: "Jul 8" },
-  { name: "James T.", activity: "Community Clean-Up", status: "rejected", points: 0, date: "Jul 8" },
-  { name: "Mei L.", activity: "Digital Literacy Workshop", status: "approved", points: 80, date: "Jun 28" },
 ];
 
 const STATUS_ICONS = {
@@ -44,6 +23,98 @@ const STATUS_ICONS = {
 
 export default function SocialPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "csr" | "participation" | "diversity">("overview");
+  
+  // Data States
+  const [loading, setLoading] = useState(true);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [participations, setParticipations] = useState<any[]>([]);
+  const [engagementData, setEngagementData] = useState<any[]>([]);
+  const [stats, setStats] = useState({ totalActivities: 28, activeParticipants: 487, avgEngagementRate: "79%", pointsAwarded: "14.2K" });
+  const [categories, setCategories] = useState<any[]>([]);
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newCategoryId, setNewCategoryId] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newLocation, setNewLocation] = useState("");
+  const [newMaxParticipants, setNewMaxParticipants] = useState<number>(50);
+  const [newPoints, setNewPoints] = useState<number>(100);
+  const [newEvidence, setNewEvidence] = useState(false);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const res = await getCSRData();
+      
+      // Get categories
+      setCategories(res.categories || []);
+
+      setActivities(res.activities);
+      setParticipations(res.participations);
+      setEngagementData(res.engagementData);
+      
+      setStats({
+        totalActivities: res.stats.totalActivities,
+        activeParticipants: res.stats.activeParticipants,
+        avgEngagementRate: `${res.stats.avgEngagementRate}%`,
+        pointsAwarded: res.stats.pointsAwarded.toLocaleString(),
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleCreateActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await createCSRActivity({
+        title: newTitle,
+        description: newDescription,
+        categoryId: newCategoryId || undefined,
+        date: new Date(newDate),
+        location: newLocation,
+        maxParticipants: Number(newMaxParticipants),
+        points: Number(newPoints),
+        evidenceRequired: newEvidence,
+      });
+      setIsModalOpen(false);
+      // Reset
+      setNewTitle("");
+      setNewDescription("");
+      setNewLocation("");
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleApprove = async (id: string, status: ApprovalStatus) => {
+    try {
+      await approveCSRParticipation(id, status);
+      loadData();
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (loading && activities.length === 0) {
+    return (
+      <div className="w-full h-96 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-2 animate-bounce">👥</div>
+          <p className="font-orbitron text-xs text-cyan-400">Loading CSR analytics twin...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -54,7 +125,10 @@ export default function SocialPage() {
           </h1>
           <p className="text-sm text-muted mt-1">CSR activities, employee participation & diversity metrics</p>
         </div>
-        <button className="btn-cyan px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2">
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="btn-cyan px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
+        >
           <Plus size={15} /> New CSR Activity
         </button>
       </div>
@@ -62,10 +136,10 @@ export default function SocialPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total CSR Activities", value: "28", icon: <Heart size={16} className="text-rose-400" />, bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.15)" },
-          { label: "Active Participants", value: "487", icon: <Users size={16} className="text-cyan-400" />, bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
-          { label: "Avg Engagement Rate", value: "79%", icon: <Star size={16} className="text-amber-400" />, bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
-          { label: "CSR Points Awarded", value: "14.2K", icon: <CheckCircle size={16} className="text-emerald-400" />, bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.15)" },
+          { label: "Total CSR Activities", value: String(stats.totalActivities), icon: <Heart size={16} className="text-rose-400" />, bg: "rgba(244,63,94,0.08)", border: "rgba(244,63,94,0.15)" },
+          { label: "Active Participants", value: String(stats.activeParticipants), icon: <Users size={16} className="text-cyan-400" />, bg: "rgba(6,182,212,0.08)", border: "rgba(6,182,212,0.15)" },
+          { label: "Avg Engagement Rate", value: stats.avgEngagementRate, icon: <Star size={16} className="text-amber-400" />, bg: "rgba(245,158,11,0.08)", border: "rgba(245,158,11,0.15)" },
+          { label: "CSR Points Awarded", value: stats.pointsAwarded, icon: <CheckCircle size={16} className="text-emerald-400" />, bg: "rgba(16,185,129,0.08)", border: "rgba(16,185,129,0.15)" },
         ].map((s, i) => (
           <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="glass-card p-4" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
@@ -125,7 +199,7 @@ export default function SocialPage() {
 
       {activeTab === "csr" && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {csrActivities.map((a, i) => (
+          {activities.map((a, i) => (
             <motion.div key={a.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }} className="glass-card p-5">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -150,9 +224,6 @@ export default function SocialPage() {
                     animate={{ width: `${(a.participants / a.max) * 100}%` }} transition={{ duration: 1, delay: i * 0.1 }} />
                 </div>
               </div>
-              <button className="w-full mt-3 py-1.5 rounded-lg text-xs font-medium border border-cyan-500/25 text-cyan-400 hover:bg-cyan-500/10 transition-colors">
-                View Details
-              </button>
             </motion.div>
           ))}
         </motion.div>
@@ -172,7 +243,7 @@ export default function SocialPage() {
                   <td className="text-muted text-xs">{p.activity}</td>
                   <td>
                     <div className="flex items-center gap-1.5">
-                      {STATUS_ICONS[p.status as keyof typeof STATUS_ICONS]}
+                      {STATUS_ICONS[p.status as keyof typeof STATUS_ICONS] || STATUS_ICONS.pending}
                       <span className="text-xs capitalize">{p.status}</span>
                     </div>
                   </td>
@@ -181,8 +252,18 @@ export default function SocialPage() {
                   <td>
                     {p.status === "pending" && (
                       <div className="flex gap-2">
-                        <button className="text-xs badge-emerald px-2 py-0.5 rounded-full">Approve</button>
-                        <button className="text-xs badge-rose px-2 py-0.5 rounded-full">Reject</button>
+                        <button 
+                          onClick={() => handleApprove(p.id, ApprovalStatus.APPROVED)}
+                          className="text-xs badge-emerald px-2 py-0.5 rounded-full"
+                        >
+                          Approve
+                        </button>
+                        <button 
+                          onClick={() => handleApprove(p.id, ApprovalStatus.REJECTED)}
+                          className="text-xs badge-rose px-2 py-0.5 rounded-full"
+                        >
+                          Reject
+                        </button>
                       </div>
                     )}
                   </td>
@@ -211,6 +292,143 @@ export default function SocialPage() {
           ))}
         </motion.div>
       )}
+
+      {/* New Activity Dialog Modal */}
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-lg glass-card border border-white/10 p-6 relative overflow-hidden"
+            >
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-2 mb-4">
+                <Heart className="text-cyan-400" size={18} />
+                <h3 className="font-orbitron text-base font-semibold text-slate-200">Log New CSR Activity</h3>
+              </div>
+
+              <form onSubmit={handleCreateActivity} className="space-y-4">
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Activity Title</label>
+                  <input 
+                    type="text" 
+                    required 
+                    value={newTitle} 
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    placeholder="e.g. Forestation Campaign"
+                    className="input-field text-xs w-full"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-muted mb-1.5 block">Description</label>
+                  <textarea 
+                    required 
+                    value={newDescription} 
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    placeholder="Provide details about the activity..."
+                    className="input-field text-xs w-full h-20"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Category</label>
+                    <select 
+                      value={newCategoryId} 
+                      onChange={(e) => setNewCategoryId(e.target.value)}
+                      className="input-field text-xs w-full bg-[#0a101d]"
+                    >
+                      <option value="">Select Category</option>
+                      {categories.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Date</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={newDate} 
+                      onChange={(e) => setNewDate(e.target.value)}
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-muted mb-1.5 block">Location</label>
+                    <input 
+                      type="text" 
+                      value={newLocation} 
+                      onChange={(e) => setNewLocation(e.target.value)}
+                      placeholder="e.g. Central Park"
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Max Participants</label>
+                    <input 
+                      type="number" 
+                      value={newMaxParticipants} 
+                      onChange={(e) => setNewMaxParticipants(Number(e.target.value))}
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-muted mb-1.5 block">Points Awarded</label>
+                    <input 
+                      type="number" 
+                      value={newPoints} 
+                      onChange={(e) => setNewPoints(Number(e.target.value))}
+                      className="input-field text-xs w-full"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input 
+                      type="checkbox" 
+                      id="evidenceReq"
+                      checked={newEvidence} 
+                      onChange={(e) => setNewEvidence(e.target.checked)}
+                      className="w-4 h-4 rounded border-white/10 bg-[#0d1829]"
+                    />
+                    <label htmlFor="evidenceReq" className="text-xs text-muted cursor-pointer">Evidence Required</label>
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end gap-2">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 rounded-xl text-xs text-slate-400 border border-white/10 hover:bg-white/5 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn-cyan px-4 py-2 rounded-xl text-xs font-semibold"
+                  >
+                    Create Activity
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
