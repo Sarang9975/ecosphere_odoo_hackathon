@@ -173,13 +173,13 @@ git clone https://github.com/<username>/odoo_hackathon.git
 Install dependencies
 
 ```bash
-pnpm install
+npm install
 ```
 
 Run the development server
 
 ```bash
-pnpm dev
+npm dev
 ```
 
 ---
